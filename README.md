@@ -1,30 +1,30 @@
-# Inštalačný postup pre lokálny SAML development environment
+# Installation guide for local SAML testing with Shibboleth IdP
 
-## Základ
+## Basics
 
-Začneme s čistou Ubuntu mašinou. V mojom prípade na omege vyrábam novú noble (24.04) virtuálku s mojim obvyklým postupom:
+Start with a clean Ubuntu machine. In my case, I created a new `noble` (24.04) virtual machine on `omega` using my usual process:
 
     virt-install -n samltest --ram 4096 --vcpus 2 --cpu host --location ./ubuntu-24.04.1-live-server-amd64.iso --osinfo detect=on,require=on --disk size=10 --extra-args="console=ttyS0 textmode=1"
-    # vedľa
+    # simultaneously:
     virsh console samltest
 
-Všetko default, okrem: Na začiatku "View SSH instructions" lebo je to menej bolestivé. Vyberám si "Ubuntu Server (minimized)", dávam iný mirror lebo defaultný má asi práve nejaký problém, vypínam "Set up this disk as an LVM group" ale to je zhruba jedno, confirm destructive action, nastavujem nejaké meno a heslo a hostname, zapínam "Install OpenSSH server", nezapínam žiadne snaps.
+Everything is default except: At the beginning, I chose "View SSH instructions" because it's less painful with virsh console. I selected "Ubuntu Server (minimized)", chose a different mirror because the default seems to have some issues right now, turned off "Set up this disk as an LVM group" (though this doesn't matter much), confirmed destructive action, set a username, password, and hostname, enabled "Install OpenSSH server". I did not enable any snaps.
 
     sudo unminimize
     sudo apt install aptitude neovim zip unzip git tig
 
-Mám zapísané že vraj Uniba používa shibboleth IdP 4.2.1, neviem či ešte stále. Najnovší 4.x je teraz 4.3.3.
-Tipujem že je istá šanca (aspoň malá) že Uniba bude v dohľadnej dobe upgradovať na v5, takže by sa hodilo potom otestovať aj v5.
-(V4 nedávno vypršal support. Na stránke https://shibboleth.net/downloads/identity-provider/ sa píše: "NOTE: The latest version of each software branch is maintained below, but at present V5 is current, V4 will be end-of-life on Sept 1, 2024, and all older versions have reached end-of-life and should never be used. Doing so puts an organization at significant risk.")
+I’ve noted that Uniba reportedly uses Shibboleth IdP 4.2.1, but I’m not sure if this is still true. The latest 4.x version is currently 4.3.3.
+I suspect there's a (small) chance that Uniba will upgrade to v5 in the near future, so it would be good to test v5 as well.
+(V4 recently lost support. https://shibboleth.net/downloads/identity-provider/ says: "NOTE: The latest version of each software branch is maintained below, but at present V5 is current, V4 will be end-of-life on Sept 1, 2024, and all older versions have reached end-of-life and should never be used. Doing so puts an organization at significant risk.")
 
 
 
 ## Java 17
 
-Najprv treba Javu. Vyzerá že Amazon Corretto 17 je dobrá voľba, vraj je "fully supported" pre
-[IDP4 SystemRequirements](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/1265631833/SystemRequirements) aj
+First, install Java. It looks like Amazon Corretto 17 is a good choice, as it is "fully supported" for
+[IDP4 SystemRequirements](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/1265631833/SystemRequirements) and
 [IDP5 SystemRequirements](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199511079/SystemRequirements).
-Inštalujem podľa https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/generic-linux-install.html.
+Follow the instructions from https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/generic-linux-install.html.
 
     wget -O - https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
@@ -34,58 +34,58 @@ Inštalujem podľa https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/ge
 
 ## IdP 4
 
-Inštalujem samotný Shibboleth IdP.
+Install the Shibboleth IdP itself.
 
-    mkdir ~/instalacia-tmp
-    cd ~/instalacia-tmp
+    mkdir ~/installation-tmp
+    cd ~/installation-tmp
     wget 'https://shibboleth.net/downloads/identity-provider/latest4/shibboleth-identity-provider-4.3.3.tar.gz'
     tar xvf shibboleth-identity-provider-4.3.3.tar.gz
     cd shibboleth-identity-provider-4.3.3/bin/
     sudo ./install.sh
 
-Odpovedám takto:
+Respond as follows:
 
-- `Source (Distribution) Directory (...): [...] ?` nechávam default
-- `Installation Directory: [/opt/shibboleth-idp] ?` píšem /opt/idp4
-  (Lebo časom chcem mať v4 aj v5 vedľa seba, nie upgradovať. Dúfam že neštandardný adresár nebudem ľutovať.)
-- `Host Name: [192.168.xxx.yyy] ?` píšem idp.unibatest.internal
-- `Backchannel PKCS12 Password:` generujem s prvým `base64 /dev/urandom | head -c 32` (nikde som nenašiel oficiálne odporúčanie akú dĺžku treba)
+- `Source (Distribution) Directory (...): [...] ?` leave default
+- `Installation Directory: [/opt/shibboleth-idp] ?` enter `/opt/idp4`
+  (I plan to have both v4 and v5 side by side eventually, not upgrade. I hope I won’t regret the non-standard directory.)
+- `Host Name: [192.168.xxx.yyy] ?` enter `idp.unibatest.internal`
+- `Backchannel PKCS12 Password:` generate by running `base64 /dev/urandom | head -c 32` (I couldn’t find any official recommendation on length)
 - `Re-enter password:`
-- `Cookie Encryption Key Password:` generujem s druhým `base64 /dev/urandom | head -c 32`
+- `Cookie Encryption Key Password:` generate by running another `base64 /dev/urandom | head -c 32`
 - `Re-enter password:`
-- `SAML EntityID: [https://idp.unibatest.internal/idp/shibboleth] ?` nechávam default
-- `Attribute Scope: [unibatest.internal] ?` nechávam default
+- `SAML EntityID: [https://idp.unibatest.internal/idp/shibboleth] ?` leave default
+- `Attribute Scope: [unibatest.internal] ?` leave default
 
-Vyrobil /opt/idp4. Zvlášť povedal že vyrobil /opt/idp4/metadata/idp-metadata.xml a /opt/idp4/war/idp.war.
+This created `/opt/idp4`. It also mentioned creating `/opt/idp4/metadata/idp-metadata.xml` and `/opt/idp4/war/idp.war`.
 
 
 
 ## Jetty 12
 
-Ďalej treba servlet container (nech je to čokoľvek). Vyberám Jetty 12 lebo je podporovaný pre v4 aj v5. Uniba používa Tomcat 9 (vidno z 404 errorov) ale nevadí.
+Next, we need a servlet container (whatever that is). I chose Jetty 12 because it’s supported for both v4 and v5. Uniba uses Tomcat 9 (visible from 404 errors), but that doesn’t matter.
 
-(Toto sa ukázalo ako veľká chyba. Rozbehať Jetty 12 s IdP 4 fakt bolelo. Nabudúce by som asi skúsil Tomcat 9 pre IdP 4 a vedľa nich Tomcat 10 a IdP 5.)
+(This turned out to be a big mistake. Getting Jetty 12 to work with IdP 4 was really painful. Next time, I’d probably try Tomcat 9 for IdP 4 and Tomcat 10 for IdP 5.)
 
-Nenachádzam dobrú príručku o Jetty 12. Nejako to zimprovizujeme.
+I couldn’t find a good guide for Jetty 12. Let’s improvise.
 
-Choď na https://jetty.org/download.html. Nájdi aktuálnu linku Jetty 12 tgz (teraz práve je to 12.0.14).
+Go to https://jetty.org/download.html. Find the latest link for Jetty 12 tgz (currently it is 12.0.14).
 
     cd /tmp
     wget 'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-home/12.0.14/jetty-home-12.0.14.tar.gz'
     cd /opt
     sudo tar xf /tmp/jetty-home-12*.tar.gz
 
-Ďalej je v tom bordel.
-https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3516104706/Jetty12 je dokumentácia pre Jetty 12 + IdP 5 ale neexistuje podobný článok pre Jetty 12 + IdP 4.
-IdP 4 System Requirements síce tvrdí že s Jetty 12 funguje ale nikde sa nepíše ako ich donútiť aby kooperovali.
-https://git.shibboleth.net/view/?p=java-idp-jetty-base.git;a=tree;h=refs/heads/12;hb=refs/heads/12 obsahuje example config pre Jetty 12 ale tiež funguje iba s IdP 5.
-Nejak som z tých zdrojov niečo pozliepal, a menil veci až kým to nezačalo fungovať:
+Then it gets messy.
+[Jetty 12 + IdP 5 Documentation](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3516104706/Jetty12) exists, but there’s no similar article for Jetty 12 + IdP 4.
+IdP 4 System Requirements claim it works with Jetty 12, but there’s no clear guide on how to make them cooperate.
+[java-idp-jetty-base branch 12](https://git.shibboleth.net/view/?p=java-idp-jetty-base.git;a=tree;h=refs/heads/12;hb=refs/heads/12) contains example config for Jetty 12, but it also only works with IdP 5.
+I cobbled something together from these sources and tweaked it until it worked:
 
     sudo mkdir /opt/jettybase4
     cd /opt/jettybase4
     sudo java -jar /opt/jetty-home-12.0.14/start.jar --add-modules=server,http,http-forwarded,ee8-annotations,ee8-deploy,ee8-jsp,ee8-jstl,ee8-plus
 
-Vyrob súbor /opt/jettybase4/webapps/idp.xml s obsahom:
+Create the file `/opt/jettybase4/webapps/idp.xml` with the following content:
 
     <?xml version="1.0"?>
     <!DOCTYPE Configure PUBLIC "-//Jetty//Configure//EN" "http://www.eclipse.org/jetty/configure.dtd">
@@ -97,25 +97,25 @@ Vyrob súbor /opt/jettybase4/webapps/idp.xml s obsahom:
       <Set name="copyWebInf">true</Set>
     </Configure>
 
-(V java-idp-jetty-base.git sú nejaké veci navyše ktoré dúfam že netreba ale v produkcii by ich možno bolo treba.
-Napríklad: nejaký lepší logging, static vypnuté directory indexes lebo sú vraj deravé, niečo o SAML backchannel, apod.)
+(There are some extra things in java-idp-jetty-base.git that I hope are not needed for this test but might be needed in production.
+For example: some better logging, disabled directory indexes of static files because they are said to be vulnerable, something about SAML backchannel, etc.)
 
-Vyrob usera jetty a daj mu všeličo:
+Create a `jetty` user and give it permissions:
 
     sudo adduser --system --group --verbose jetty
     cd /opt/idp4
     sudo chown -R jetty:jetty logs metadata credentials conf war
 
-(FWIW: Neviem čo má vlastniť root a čo jetty. Tento zoznam nie je z oficiálnych zdrojov ale z náhodných tutoriálov. Zvlášť to že aj `conf` tiež vlastní jetty je mi nejaké podozrivé.)
+(FWIW: I’m unsure what should be owned by `root` vs. `jetty`. This list is based on random tutorials, not official sources. Especially making `conf` owned by `jetty` seems suspicious.)
 
-Spusti server (a počkaj cca 40 sekúnd) a otestuj že funguje:
+Start the server (wait ~40 seconds) and test if it works:
 
     sudo -u jetty env -C /opt/jettybase4/ java -Didp.home=/opt/idp4 -jar /opt/jetty-home-12.0.14/start.jar
     curl -v http://localhost:8080/idp/status
 
-Jetty má nejakú vstavanú systemd integráciu (viď /opt/jetty-home-12.0.14/bin/) ale nepáči sa mi.
+Jetty has built-in systemd integration (see `/opt/jetty-home-12.0.14/bin/`), but I don’t like it.
 
-Vyrob súbor /etc/systemd/system/jetty-idp4.service s obsahom:
+Create the file `/etc/systemd/system/jetty-idp4.service` with the following content:
 
     [Unit]
     After=network.target remote-fs.target nss-lookup.target
@@ -127,21 +127,21 @@ Vyrob súbor /etc/systemd/system/jetty-idp4.service s obsahom:
     [Install]
     WantedBy=multi-user.target
 
-Zapni a spusti ho:
+Enable and start it:
 
     sudo systemctl enable --now jetty-idp4
 
-(FWIW: Poriadny produkčný setup by asi obsahoval aj nejaké ďalšie veci, napr Restart=, PrivateTmp=, apod.)
+(FWIW: A proper production setup would probably include additional settings like `Restart=`, `PrivateTmp=`, etc.)
 
 
 
 ## Apache
 
-Ďalej chcem Apache. Teoreticky ho netreba, Jetty môže priamo počúvať na 443, ale neskôr budem chcieť ďalšie virtual hosts a mod_auth_mellon.
+Next, I want Apache. Theoretically, it’s not necessary since Jetty can directly listen on port 443, but later I will want additional virtual hosts and mod_auth_mellon.
 
     sudo apt install apache2
 
-Vyrob súbor /etc/apache2/sites-available/idp.conf s obsahom:
+Create a file `/etc/apache2/sites-available/idp.conf` with the following content:
 
     <VirtualHost *:443>
             ServerName idp.unibatest.internal
@@ -158,10 +158,10 @@ Vyrob súbor /etc/apache2/sites-available/idp.conf s obsahom:
             RequestHeader set X-Forwarded-Proto "https"
     </VirtualHost>
 
-Veľká škoda že Jetty nepodporuje AJP. :(
-Myslím že tento setup je trochu deravý (napr. Jetty číta remote IP aj z hlavičky "Forwarded:" o ktorej Apache nevie) ale pre jednoduchosť na to kašlem.
+It’s a pity that Jetty doesn’t support AJP. :(
+I think this setup is a bit vulnerable to request smuggling (e.g., Jetty reads the remote IP also from the "Forwarded:" header, which Apache doesn’t know about), but for simplicity, I’ll ignore it.
 
-Zapni ho:
+Enable it:
 
     sudo a2enmod headers proxy proxy_http ssl
     sudo a2ensite idp
@@ -170,54 +170,54 @@ Zapni ho:
 
 
 
-## Prístup z Chrome
+## Access from Chrome
 
-Normálnym ľuďom asi stačí pridať si vhodné riadky do /etc/hosts na vonkajšej fyzickej mašine kde beží prehliadač. Ja to zbytočne komplikujem.
+For most people, it’s enough to add the appropriate lines to `/etc/hosts` on the external physical machine where the browser runs. I’m overcomplicating it.
 
-Pretuneluj sa cez jeden alebo sériu viacerých `ssh -L` z localhost:12399 na virtuálku samltest:443.
+Tunnel through one or a series of `ssh -L` from localhost:12399 to the virtual machine samltest:443.
 
-Spusti u seba Chrome s prepínačmi:
+Run Chrome on your machine with the following options:
 
     chrome --user-data-dir=/tmp/blabla --guest --host-resolver-rules="MAP *.unibatest.internal:443 127.0.0.1:12399" --ignore-certificate-errors
 
-(--user-data-dir treba iba aby ti dovolil spustiť nový proces v novom profile ak už Chrome beží. Inak iba povie bežiacemu procesu nech otvorí nové okno ale na prepínače kašle. --guest vlastne asi netreba.)
+(--user-data-dir is required only to allow launching a new process in a new profile if Chrome is already running. Otherwise, it just tells the running process to open a new window but ignores the options. --guest probably isn’t necessary.)
 
-Otvor https://idp.unibatest.internal/ a mal by si niečo vidieť.
+Open `https://idp.unibatest.internal/` and you should see something.
 
 
 
-## IdP konfigurácia
+## IdP configuration
 
-(Odmietam inštalovať navyše ešte aj LDAP server.) Uprav /opt/idp4/conf/authn/password-authn-config.xml takto:
+(I refuse to install an LDAP server as well.) Edit `/opt/idp4/conf/authn/password-authn-config.xml` as follows:
 
-- Vykomentuj riadok `<ref bean="shibboleth.LDAPValidator" />`
-- Odkomentuj riadok `<bean parent="shibboleth.HTPasswdValidator" p:resource="%{idp.home}/credentials/demo.htpasswd" />`
+- Comment out the line `<ref bean="shibboleth.LDAPValidator" />`
+- Uncomment the line `<bean parent="shibboleth.HTPasswdValidator" p:resource="%{idp.home}/credentials/demo.htpasswd" />`
 
-Vyrob nejakých userov a daj im nejaké heslá:
+Create some users and assign them passwords:
 
     sudo -u jetty touch /opt/idp4/credentials/demo.htpasswd
     sudo -u jetty htpasswd /opt/idp4/credentials/demo.htpasswd aaa
     sudo -u jetty htpasswd /opt/idp4/credentials/demo.htpasswd bbb
     sudo -u jetty htpasswd /opt/idp4/credentials/demo.htpasswd ccc
 
-Uprav súbor /opt/idp4/metadata/idp-metadata.xml a na vrchu vymaž `validUntil="..."` atribút.
-Neviem či je korektnejšie ho vymazať alebo zmeniť, ale Shibboleth SP (viď nižšie) nemá rád defaultnú hodnotu (Metadata instance was invalid at time of acquisition.), a oficiálny idp.uniba.sk metadata ho tiež nemá.
+Edit the file `/opt/idp4/metadata/idp-metadata.xml` and remove the `validUntil="..."` attribute at the top.
+I’m not sure if it’s better to remove it or change it, but Shibboleth SP (see below) doesn’t like the default value ("Metadata instance was invalid at time of acquisition."), and the official idp.uniba.sk metadata doesn’t have it either.
 
-Reštartuj ho:
+Restart it:
 
     sudo systemctl restart jetty-idp4
 
-Teraz už by si mal vedieť navštíviť https://idp.unibatest.internal/idp/profile/admin/hello a dostať login formulár čo sa správa rôzne keď zadáš správne/nesprávne meno/heslo.
-(Síce keď sa správne prihlásim tak som aj tak dostal access denied, ale nevadí. Niečo to robí.)
-(Podľa /opt/idp4/logs/idp-process.log je to lebo "No policy named 'AccessByAdminUser' found, returning default denial policy".)
+Now you should be able to visit `https://idp.unibatest.internal/idp/profile/admin/hello` and get a login form that behaves differently depending on whether you enter the correct/incorrect username/password.
+(Although when I log in correctly, I still get access denied, but that’s fine. It’s doing something.)
+(According to `/opt/idp4/logs/idp-process.log`, this is because "No policy named 'AccessByAdminUser' found, returning default denial policy.")
 
-Aj všeličo iné by sa dalo konfigurovať ale zatiaľ vyzerá že toto stačí.
+Many other things could be configured, but for now, this seems sufficient.
 
 
 
-## SP používajúci mod_auth_mellon
+## SP using mod_auth_mellon
 
-Vyrob súbor /etc/apache2/sites-available/spmellon.conf s obsahom:
+Create a file `/etc/apache2/sites-available/spmellon.conf` with the following content:
 
     <VirtualHost *:443>
             ServerName spmellon.unibatest.internal
@@ -245,30 +245,30 @@ Vyrob súbor /etc/apache2/sites-available/spmellon.conf s obsahom:
             </Location>
     </VirtualHost>
 
-(Keďže SP aj IdP bežia na tej istej virtuálke, pre pohodlie rovno používam cestu k idp-metadata.xml. V produkcii by sa to xml samozrejme kopírovalo na druhú mašinu.)
+(Since both SP and IdP run on the same virtual machine, for convenience, I directly use the path to idp-metadata.xml. In production, this XML file would, of course, be copied to the other machine.)
 
-Vyrob súbor /var/www/spmellon/index.html (a jeho adresár) s obsahom:
+Create a file `/var/www/spmellon/index.html` (and its directory) with the following content:
 
     <a href="/pyinfo/">pyinfo</a><br>
     <a href="/secret/">secret</a><br>
     <a href="/secret/pyinfo/">secret pyinfo</a><br>
 
-Vyrob súbor /var/www/spmellon/pyinfo.py s obsahom:
+Create a file `/var/www/spmellon/pyinfo.py` with the following content:
 
     import pprint
     def application(environ, start_response):
         start_response('200 OK', [('Content-Type', 'text/plain;charset=UTF-8')])
         return [pprint.pformat(environ).encode('utf-8')]
 
-Vyrob súbor /var/www/spmellon/secret/index.html (a jeho adresár) s obsahom:
+Create a file `/var/www/spmellon/secret/index.html` (and its directory) with the following content:
 
     <h1>secret</h1>
 
-Uprav /opt/idp4/conf/metadata-providers.xml a na spodok (tesne nad posledný riadok `</MetadataProvider>`) dopíš:
+Edit `/opt/idp4/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
 
     <MetadataProvider id="LocalMetadata_spmellon" xsi:type="FilesystemMetadataProvider" metadataFile="/etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.xml"/>
 
-Spusti:
+Run:
 
     sudo apt install libapache2-mod-auth-mellon libapache2-mod-wsgi-py3
     sudo mkdir /etc/apache2/spmellon
@@ -278,27 +278,27 @@ Spusti:
     sudo systemctl restart apache2
     sudo systemctl restart jetty-idp4
 
-Teraz už by si mal vedieť navštíviť https://spmellon.unibatest.internal/ a vidieť tam všelijaké veci.
+Now you should be able to visit `https://spmellon.unibatest.internal/` and see various things.
 
-Dozvedeli sme sa že shibboleth IdP nám defaultne dá iba škaredý transient NameID (niečo dlhé čo začína `AAdzZWNyZXQx...`) a jediný atribút `schacHomeOrganization` AKA `urn:oid:1.3.6.1.4.1.25178.1.2.9` ktorého hodnota je `unibatest.internal`.
+We’ve learned that the Shibboleth IdP by default only provides an ugly transient NameID (something long starting with `AAdzZWNyZXQx...`) and a single attribute `schacHomeOrganization` AKA `urn:oid:1.3.6.1.4.1.25178.1.2.9`, whose value is `unibatest.internal`.
 
 
 
-## SP používajúci mod_shib (Shibboleth SP)
+## SP using mod_shib (Shibboleth SP)
 
     sudo apt install libapache2-mod-shib
     cd /etc/shibboleth
     sudo shib-keygen -n sp-signing
     sudo shib-keygen -n sp-encrypt
 
-Uprav /etc/shibboleth/shibboleth2.xml takto:
+Edit `/etc/shibboleth/shibboleth2.xml` as follows:
 
-- Prepíš `<ApplicationDefaults entityID="https://sp.example.org/shibboleth"` na `<ApplicationDefaults entityID="https://spshib.unibatest.internal/shibboleth"`
-- Prepíš `<SSO entityID="https://idp.example.org/idp/shibboleth"` na `<SSO entityID="https://idp.unibatest.internal/idp/shibboleth"`
-- Prepíš `discoveryProtocol="SAMLDS" discoveryURL="https://ds.example.org/DS/WAYF">` na `>`
-- Odkomentuj a prepíš `<MetadataProvider type="XML" validate="true" path="partner-metadata.xml"/>` na `<MetadataProvider type="XML" validate="true" path="/opt/idp4/metadata/idp-metadata.xml"/>`
+- Change `<ApplicationDefaults entityID="https://sp.example.org/shibboleth"` to `<ApplicationDefaults entityID="https://spshib.unibatest.internal/shibboleth"`
+- Change `<SSO entityID="https://idp.example.org/idp/shibboleth"` to `<SSO entityID="https://idp.unibatest.internal/idp/shibboleth"`
+- Change `discoveryProtocol="SAMLDS" discoveryURL="https://ds.example.org/DS/WAYF">` to `>`
+- Uncomment and change `<MetadataProvider type="XML" validate="true" path="partner-metadata.xml"/>` to `<MetadataProvider type="XML" validate="true" path="/opt/idp4/metadata/idp-metadata.xml"/>`
 
-Vyrob súbor /etc/apache2/sites-available/spshib.conf s obsahom:
+Create a file `/etc/apache2/sites-available/spshib.conf` with the following content:
 
     <VirtualHost *:443>
             ServerName spshib.unibatest.internal
@@ -324,10 +324,10 @@ Vyrob súbor /etc/apache2/sites-available/spshib.conf s obsahom:
             </Location>
     </VirtualHost>
 
-Uprav /etc/apache2/conf-available/shib.conf takto: prepíš `ShibCompatValidUser Off` na `ShibCompatValidUser On`.
-(Lebo inak sa rozbije spmellon, hádže chybu 401. Normálne by to nebolo treba ale tu sú v tom istom apachi obidva.)
+Edit `/etc/apache2/conf-available/shib.conf` as follows: change `ShibCompatValidUser Off` to `ShibCompatValidUser On`.
+(This is to prevent breaking spmellon, which otherwise throws a 401 error. Normally, this wouldn’t be necessary, but here both are in the same Apache instance.)
 
-Spusti:
+Run:
 
     sudo cp -a /var/www/spmellon /var/www/spshib
     sudo a2ensite spshib
@@ -335,61 +335,61 @@ Spusti:
     sudo systemctl restart apache2
     sudo curl --insecure --resolve '*:443:127.0.0.1' https://spshib.unibatest.internal/Shibboleth.sso/Metadata -o /opt/meta-spshib.xml
 
-Uprav /opt/idp4/conf/metadata-providers.xml a na spodok (tesne nad posledný riadok `</MetadataProvider>`) dopíš:
+Edit `/opt/idp4/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
 
     <MetadataProvider id="LocalMetadata_spshib" xsi:type="FilesystemMetadataProvider" metadataFile="/opt/meta-spshib.xml"/>
 
-Spusti:
+Run:
 
     sudo systemctl restart jetty-idp4
 
-Teraz už by si mal vedieť navštíviť https://spshib.unibatest.internal/ a vidieť tam všelijaké veci.
+Now you should be able to visit `https://spshib.unibatest.internal/` and see various things.
 
-Vyzerá že Shibboleth SP úplne kašle na NameID (neuložil ho do žiadnej premennej), aspoň keď je transient.
-Fakt chce dostať (nejaký) atribút, a keď ho nedostane tak nechá REMOTE_USER prázdny.
-To je asi prečo v /etc/shibboleth/shibboleth2.xml defaultne je `REMOTE_USER="eppn subject-id pairwise-id persistent-id"`.
+It appears that Shibboleth SP completely ignores NameID (it doesn’t store it in any variable), at least when it’s transient.
+It really wants to receive (some) attribute, and if it doesn’t, it leaves `REMOTE_USER` empty.
+This is likely why `/etc/shibboleth/shibboleth2.xml` defaults to `REMOTE_USER="eppn subject-id pairwise-id persistent-id"`.
 
-Niečo sa o nich píše v https://docs.oasis-open.org/security/saml-subject-id-attr/v1.0/saml-subject-id-attr-v1.0.html
+Some information about these can be found at https://docs.oasis-open.org/security/saml-subject-id-attr/v1.0/saml-subject-id-attr-v1.0.html.
 
 
 
 ## IdP 5
 
-Normálnym ľuďom asi stačí mať jeden IdP naraz (prípadne skúšať upgradovanie zo 4 na 5).
-Ja chcem vyvíjať plugin čo funguje na obidvoch, preto táto komplikácia.
-Cieľ je aby bežal iba jeden naraz ale dalo sa medzi nimi pomerne ľahko prepínať.
+For most users, it's probably sufficient to run one IdP at a time (or test the upgrade process from version 4 to 5).
+However, I want to develop a plugin that works on both, hence this complexity.
+The goal is to have only one running at a time but to switch between them relatively easily.
 
-    cd ~/instalacia-tmp
+    cd ~/installation-tmp
     wget 'https://shibboleth.net/downloads/identity-provider/latest5/shibboleth-identity-provider-5.1.3.tar.gz'
     tar xvf shibboleth-identity-provider-5.1.3.tar.gz
     cd shibboleth-identity-provider-5.1.3/bin/
     sudo ./install.sh
 
-Odpovedám takto:
+Respond as follows:
 
-- `Installation Directory: [/opt/shibboleth-idp] ?` píšem /opt/idp5
-- `Host Name: [192.168.xxx.yyy] ?` píšem idp.unibatest.internal
-- `SAML EntityID: [https://idp.unibatest.internal/idp/shibboleth] ?` nechávam default
-- `Attribute Scope: [unibatest.internal] ?` nechávam default
+- `Installation Directory: [/opt/shibboleth-idp] ?` enter `/opt/idp5`
+- `Host Name: [192.168.xxx.yyy] ?` enter `idp.unibatest.internal`
+- `SAML EntityID: [https://idp.unibatest.internal/idp/shibboleth] ?` leave default
+- `Attribute Scope: [unibatest.internal] ?` leave default
 
-Vyrobil /opt/idp5. Zvlášť povedal že vyrobil /opt/idp5/metadata/idp-metadata.xml a /opt/idp5/war/idp.war.
+This created `/opt/idp5`. It also mentioned creating `/opt/idp5/metadata/idp-metadata.xml` and `/opt/idp5/war/idp.war`.
 
-Uprav /opt/idp5/conf/authn/password-authn-config.xml tak ako je napísané vyššie.
-Vyrob /opt/idp5/credentials/demo.htpasswd tak ako je napísané vyššie (alebo proste skopíruj).
-Uprav /opt/idp5/conf/metadata-providers.xml tak ako je napísané vyššie.
+Edit `/opt/idp5/conf/authn/password-authn-config.xml` as described above.
+Create `/opt/idp5/credentials/demo.htpasswd` as described above (or simply copy it).
+Edit `/opt/idp5/conf/metadata-providers.xml` as described above.
 
-Uprav /opt/idp5/metadata/idp-metadata.xml takto: prepíš `<md:EntityDescriptorentityID=` na `<md:EntityDescriptor entityID=`. (Known bug OSJ-409 fixnutý v IdP 5.2.0.)
-Atribút validUntil už tam nie je takže ho netreba odstraňovať.
+Edit `/opt/idp5/metadata/idp-metadata.xml` as follows: change `<md:EntityDescriptorentityID=` to `<md:EntityDescriptor entityID=`. (This is a known bug OSJ-409 fixed in IdP 5.2.0.)
+The `validUntil` attribute is no longer present, so there is no need to remove it.
 
-Ako servlet container používam zase Jetty 12.
-Tentoraz už by teoreticky malo fungovať použiť priamo config z `java-idp-jetty-base.git` vetvy `12`. Ale nepáči sa mi, lebo zapína https a podobne.
-Preto si vyrobím svoj vlastný jetty-base. V podstate len vraciam späť svoje zmeny (zvlášť z ee8 späť na ee9).
+Once again I used Jetty 12 as the servlet container.
+In theory, it should now work using the configuration from `java-idp-jetty-base.git` branch `12`. But I don’t like it because it enables HTTPS and other features by default.
+Instead, I created my own jetty-base, undoing my changes (especially from ee8 back to ee9).
 
     sudo mkdir /opt/jettybase5
     cd /opt/jettybase5
     sudo java -jar /opt/jetty-home-12.0.14/start.jar --add-modules=server,http,http-forwarded,ee9-annotations,ee9-deploy,ee9-jsp,ee9-jstl,ee9-plus
 
-Vyrob súbor /opt/jettybase5/webapps/idp.xml s obsahom:
+Create `/opt/jettybase5/webapps/idp.xml` with the following content:
 
     <?xml version="1.0"?>
     <!DOCTYPE Configure PUBLIC "-//Jetty//Configure//EN" "http://www.eclipse.org/jetty/configure.dtd">
@@ -401,29 +401,29 @@ Vyrob súbor /opt/jettybase5/webapps/idp.xml s obsahom:
       <Set name="copyWebInf">true</Set>
     </Configure>
 
-(V java-idp-jetty-base.git sú nejaké veci navyše ktoré dúfam že netreba ale v produkcii by ich možno bolo treba.
-Napríklad: nejaký lepší logging, static vypnuté directory indexes lebo sú vraj deravé, niečo o SAML backchannel, apod.)
+(There are some extra things in java-idp-jetty-base.git that I hope are not needed for this test but might be needed in production.
+For example: some better logging, disabled directory indexes of static files because they are said to be vulnerable, something about SAML backchannel, etc.)
 
-Vyrob usera jetty (ak sa tak nestalo vyššie) a daj mu všeličo:
+Create a `jetty` user (if not done earlier) and give it permissions:
 
     sudo adduser --system --group --verbose jetty
     cd /opt/idp5
     sudo chown -R jetty:jetty logs metadata credentials conf war
 
-(FWIW: Neviem čo má vlastniť root a čo jetty. Tento zoznam nie je z oficiálnych zdrojov ale z náhodných tutoriálov. Zvlášť to že aj `conf` tiež vlastní jetty je mi nejaké podozrivé.)
+(FWIW: I’m unsure what should be owned by `root` vs. `jetty`. This list is based on random tutorials, not official sources. Especially making `conf` owned by `jetty` seems suspicious.)
 
-Vypni predošlý jetty (ak existuje).
+Disable the previous jetty (if applicable).
 
     sudo systemctl disable --now jetty-idp4
 
-Spusti server (a počkaj cca 40 sekúnd) a otestuj že funguje:
+Start the server (wait ~40 seconds) and test if it works:
 
     sudo -u jetty env -C /opt/jettybase5/ java -Didp.home=/opt/idp5 -jar /opt/jetty-home-12.0.14/start.jar
     curl -v http://localhost:8080/idp/status
 
-Jetty má nejakú vstavanú systemd integráciu (viď /opt/jetty-home-12.0.14/bin/) ale nepáči sa mi.
+Jetty has built-in systemd integration (see `/opt/jetty-home-12.0.14/bin/`), but I don’t like it.
 
-Vyrob súbor /etc/systemd/system/jetty-idp5.service s obsahom:
+Create the file `/etc/systemd/system/jetty-idp5.service` with the following content:
 
     [Unit]
     After=network.target remote-fs.target nss-lookup.target
@@ -435,17 +435,17 @@ Vyrob súbor /etc/systemd/system/jetty-idp5.service s obsahom:
     [Install]
     WantedBy=multi-user.target
 
-Zapni a spusti ho:
+Enable and start it:
 
     sudo systemctl enable --now jetty-idp5
 
-(FWIW: Poriadny produkčný setup by asi obsahoval aj nejaké ďalšie veci, napr Restart=, PrivateTmp=, apod.)
+(FWIW: A proper production setup would probably include additional settings like `Restart=`, `PrivateTmp=`, etc.)
 
     sudo ln -sf idp5 /opt/idpcurrent
 
-Uprav /etc/apache2/sites-available/spmellon.conf a /etc/shibboleth/shibboleth2.xml takto: prepíš `/opt/idp4/metadata/idp-metadata.xml` na `/opt/idpcurrent/metadata/idp-metadata.xml`.
+Update `/etc/apache2/sites-available/spmellon.conf` and `/etc/shibboleth/shibboleth2.xml` as follows: Change `/opt/idp4/metadata/idp-metadata.xml` to `/opt/idpcurrent/metadata/idp-metadata.xml`.
 
-Vďaka tomu by sa malo dať prepínať medzi 4 a 5 tak, že jeden disabluješ, druhý enabluješ, prepíšeš idpcurrent symlinku, a reštartuješ apache2 a shibd.
+This allows switching between IdP 4 and 5 by disabling one, enabling the other, updating the `idpcurrent` symlink, and restarting apache2 and shibd.
 
 
 
@@ -453,7 +453,8 @@ Vďaka tomu by sa malo dať prepínať medzi 4 a 5 tak, že jeden disabluješ, d
 
     sudo apt install memcached libmemcached-tools
 
-Uprav /opt/idp5/conf/global.xml a dole pridaj: (obsah z https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199509576/StorageConfiguration ale upravený na localhost)
+Edit `/opt/idp5/conf/global.xml` and add the following configuration at the bottom:
+(Source: [Shibboleth StorageConfiguration](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199509576/StorageConfiguration), modified to use localhost)
 
     <bean id="shibboleth.MemcachedStorageService"
           class="org.opensaml.storage.impl.memcached.MemcachedStorageService"
@@ -475,141 +476,77 @@ Uprav /opt/idp5/conf/global.xml a dole pridaj: (obsah z https://shibboleth.atlas
         </constructor-arg>
     </bean>
 
-Uprav /opt/idp5/conf/idp.properties takto:
+Edit `/opt/idp5/conf/idp.properties` as follows:
 
-- Prepíš `#idp.session.StorageService = shibboleth.ClientSessionStorageService` na `idp.session.StorageService = shibboleth.MemcachedStorageService`
-- Prepíš `#idp.replayCache.StorageService = shibboleth.StorageService` na `idp.replayCache.StorageService = shibboleth.MemcachedStorageService`
-- Prepíš `#idp.artifact.StorageService = shibboleth.StorageService` na `idp.artifact.StorageService = shibboleth.MemcachedStorageService`
-- Prepíš `#idp.cas.StorageService=shibboleth.StorageService` na `idp.cas.StorageService = shibboleth.MemcachedStorageService`
-
-
+- Change `#idp.session.StorageService = shibboleth.ClientSessionStorageService` to `idp.session.StorageService = shibboleth.MemcachedStorageService`
+- Change `#idp.replayCache.StorageService = shibboleth.StorageService` to `idp.replayCache.StorageService = shibboleth.MemcachedStorageService`
+- Change `#idp.artifact.StorageService = shibboleth.StorageService` to `idp.artifact.StorageService = shibboleth.MemcachedStorageService`
+- Change `#idp.cas.StorageService=shibboleth.StorageService` to `idp.cas.StorageService = shibboleth.MemcachedStorageService`
 
 
-## Neupratané
+
+## Unsorted
 
     cd
     wget https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz
     tar xvf apache-maven-3.9.9-bin.tar.gz
     echo 'PATH=$HOME/apache-maven-3.9.9/bin:$PATH' >> .bashrc
 
-Vyrob ~/.m2/settings.xml a daj tam obsah z https://shibboleth.atlassian.net/wiki/spaces/DEV/pages/2891317253/MavenRepositories
+Create ~/.m2/settings.xml with content from https://shibboleth.atlassian.net/wiki/spaces/DEV/pages/2891317253/MavenRepositories
 
     chmod 755 ~
 
     sudo chown -R jetty:jetty /opt/idp4 /opt/idp5
 
-V /var/www/spmellon/secret/index.html som pridal logout link.
+Added logout link to /var/www/spmellon/secret/index.html.
 
-Uprav /opt/idp5/conf/access-control.xml, odkomentuj sekciu AccessByAdminUser a zmeň `jdoe` na `bbb`.
+Edit /opt/idp5/conf/access-control.xml, uncomment the AccessByAdminUser section and change `jdoe` to `bbb`.
 
     env -C /opt/idp5/bin/ sudo -u jetty ./plugin.sh -I net.shibboleth.idp.plugin.nashorn
 
-Kvôli andrvotr/fabricate bolo treba pridať už aj idp.unibatest.internal do /etc/hosts (`127.0.1.1 samltest idp.unibatest.internal`).
+Because of andrvotr/fabricate I had to also add idp.unibatest.internal to /etc/hosts (`127.0.1.1 samltest idp.unibatest.internal`).
 
-Uprav /opt/idp5/conf/idp.properties a dole pridaj:
+Edit /opt/idp5/conf/idp.properties and append at the bottom:
 
     andrvotr.httpclient.connectionDisregardTLSCertificate=true
+
+Run:
 
     curl -LsSf https://astral.sh/uv/install.sh | sh
 
 
 
-# Zbierka príkazov na SAML debugging
+# Miscellaneous commands for SAML debugging
 
-Keď vidíš POST request v ktorého form data body je `SAMLResponse=PD94...` (cesta môže byť všelijaká), je to proste base64.
+When you see a POST request with form data containing `SAMLResponse=PD94...` (the path may vary), it is simply base64 encoded.
 
     printf 'PD94...' | base64 -d | sed 's/></>\n</g'
 
-Napríklad odpoveď od WSO2 IdP pre AIS SP sa tým dá prečítať.
-Bohužiaľ Shibboleth IdP defaultne produkuje šifrované assertions (`<saml2:EncryptedAssertion><xenc:EncryptedData>`).
-Ak máš súkromný kľúč daného SP, dá sa dešifrovať takto:
+This can be used for example to read the response from the WSO2 IdP to the AIS SP.
+Unfortunately, Shibboleth IdP by default produces encrypted assertions (`<saml2:EncryptedAssertion><xenc:EncryptedData>`).
+If you have the private key for a given SP, you can decrypt it like this:
 
     sudo apt install xmlsec1
     printf 'PD94bWwg...' | base64 -d | sudo xmlsec1 --decrypt --privkey-pem /etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.key - | sed 's/></>\n</g'
 
-Ak dostaneš chybu `func=xmlSecTransformNodeRead:file=transforms.c:line=1324:obj=unknown:subj=xmlSecTransformIdListFindByHref:error=1:xmlsec library function failed:href=http://www.w3.org/2009/xmlenc11#rsa-oaep`, znamená to, že potrebuješ xmlsec >= 1.3.0. Ten zatiaľ nemá v ubuntu balíček, ale je napríklad v conda-forge (veľa šťastia).
+If you encounter the error `func=xmlSecTransformNodeRead:file=transforms.c:line=1324:obj=unknown:subj=xmlSecTransformIdListFindByHref:error=1:xmlsec library function failed:href=http://www.w3.org/2009/xmlenc11#rsa-oaep`, it means you need xmlsec >= 1.3.0. It is not yet available as a package in Ubuntu but is available e.g. in conda-forge (good luck).
 
-Nový xmlsec >= 1.3.0 namiesto `-` potrebuje `--lax-key-search /dev/stdin`.
+New xmlsec >= 1.3.0 requires `--lax-key-search /dev/stdin` instead of `-`.
 
-    cat subor | base64 -d | sudo .../bin/xmlsec1 --decrypt --privkey-pem /etc/shibboleth/sp-encrypt-key.pem --lax-key-search /dev/stdin | sed 's/></>\n</g'
+    cat file | base64 -d | sudo .../bin/xmlsec1 --decrypt --privkey-pem /etc/shibboleth/sp-encrypt-key.pem --lax-key-search /dev/stdin | sed 's/></>\n</g'
 
-Keď je request tvaru `GET https://.../idp/profile/SAML2/Redirect/SSO?SAMLRequest=nZ...`
-(t.j. HTTP-Redirect binding), je to raw zlib, dekóduj ho takto:
+When you have a request like `GET https://.../idp/profile/SAML2/Redirect/SSO?SAMLRequest=nZ...` (i.e., HTTP-Redirect binding), it is raw zlib. Decode it like this:
 
     printf 'nZ...' | base64 -d | python3 -c "import zlib,sys; sys.stdout.buffer.write(zlib.decompress(sys.stdin.buffer.read(), -8))" | sed 's/></>\n</g'
 
-Obskúrny detail:
-Shibboleth IdP niekedy generuje symetricky AEAD-šifrované hodnoty tvaru `AAdzZWNy...`.
-Napríklad sa môžu vyskytnúť ako opaque NameID, alebo ako hodnota v localStorage ak je zapnutý client-side session storage (defaultne áno ale na unibe nie).
-Ak máš súkromné kľúče IdP, a zaujíma ťa čo je vnútri hodnoty, dajú sa dešifrovať takto:
+Obscure detail:
+Shibboleth IdP sometimes generates symmetrically AEAD-encrypted values of the form `AAdzZWNy...`.
+These may appear as opaque NameID values or as entries in `localStorage` if client-side session storage is enabled (it’s enabled by default, but not at uniba).
+If you have the private keys of the IdP and want to inspect the contents, you can decrypt them like this:
 
     sudo -u jetty /opt/idp4/bin/runclass.sh -Didp.home=/opt/idp4 net.shibboleth.idp.cli.DataSealerCLI --verbose net/shibboleth/idp/conf/sealer.xml dec "$str"
 
-- `sudo -u jetty` samozrejme závisí od vlastníka credentials/.
-- Keby bol v štandardnom adresári, stačilo by `/opt/shibboleth-idp/bin/sealer.sh` namiesto `/opt/idp4/bin/runclass.sh -Didp.home=/opt/idp4 net.shibboleth.idp.cli.DataSealerCLI`.
-- Ak sa to nepodarí (napr. lebo vypršal timestamp uložený vnútri šifrovanej hodnoty), vypíše odvecnú chybu "Unable to access DataSealer from Spring context". Preto `--verbose`.
-- Hodnota `net/shibboleth/idp/conf/sealer.xml` nie je zdokumentovaná, bola zistená grepovaním. Bez nej to nefunguje.
-
-
-
-
-
-
-# Bordel TODO
-
-niekde som čítal že nechcem zapínať releasing of persistent nameID, tak dúfam že veru.
-niekto inštaluje mysql s komentárom že to treba kvôli persistent nameID (čo asi nechcem) a storing user consent (čo aspoň v dev nechcem), tak dúfam že netreba.
-
-niekto mení idp-metadata.xml (ale v3) takto:
-- z protocolSupportEnumeration  ruší urn:oasis:names:tc:SAML:1.1:protocol a urn:mace:shibboleth:1.0
-- v <Extensions> maže vykomentovaný text a nastavuje DisplayName , Description, Logo, Logo
-- niekam hádže logo.png
-- maže <ArtifactResolutionService Binding="urn:oasis:names:tc:SAML:1.0:bindings:SOAP-binding" Location="https://idp.YOUR-DOMAIN:8443/idp/profile/SAML1/SOAP/ArtifactResolution" index="1"/> a ďalšiemu dáva index="1"
-- maže <SingleSignOnService Binding="urn:mace:shibboleth:1.0:profiles:AuthnRequest" Location="https://idp.YOUR-DOMAIN/idp/profile/Shibboleth/SSO"/>
-- maže :8443 zo všetkých url
-- odkomentuje SingleLogoutService
-- v <AttributeAuthorityDescriptor> v protocolSupportEnumeration namiesto urn:oasis:names:tc:SAML:1.1:protocol píše urn:oasis:names:tc:SAML:2.0:protocol
-- odkomentuje <AttributeService Binding="urn:oasis:names:tc:SAML:2.0:bindings:SOAP" Location="https://idp.YOUR-DOMAIN/idp/profile/SAML2/SOAP/AttributeQuery"/>
-- maže <AttributeService Binding="urn:oasis:names:tc:SAML:1.0:bindings:SOAP-binding" Location="https://idp.YOUR-DOMAIN:8443/idp/profile/SAML1/SOAP/AttributeQuery"/>
-zvyšok už ma nebaví ale bolo to v https://github.com/LEARN-LK/IAM/blob/master/IDPonUbuntu.md
-
-
-prvý tutoriál
-- strč idp.example.com do /etc/hosts
-- stiahni idp 3.x
-- (v sudo shelli) ./install.sh
-    Installation Directory: _[/opt/shibboleth-idp]_
-    Hostname: _[idp.appd.com]_
-    SAML EntityID: _[https://idp.appd.com/idp/shibboleth]_
-    Attribute Scope: _[appd.com]_
-    Backchannel PKCS12 Password: _#PASSWORD-FOR-BACKCHANNEL#_
-    Re-enter password: _#PASSWORD-FOR-BACKCHANNEL#_
-    Cookie Encryption Key Password: _#PASSWORD-FOR-COOKIE-ENCRYPTION#_
-    Re-enter password: _#PASSWORD-FOR-COOKIE-ENCRYPTION#_
-- potom všelijaká konfigurácia na ktorú zatiaľ kašlem lebo v v4 bude určite inak
-
-druhý tutoriál
-- apt install vim wget gnupg ca-certificates openssl apache2 ntp libservlet3.1-java liblogback-java --no-install-recommends
-  - chcem apache2
-- corretto (done)
-- strč idp.example.com do /etc/hosts
-- strč JAVA_HOME=/usr/lib/jvm/java-11-amazon-corretto do /etc/environment (to spravím až keď fakt bude treba)
-- stiahni idp 4.x, rozbaľ do /usr/local/src
-- (v sudo shelli) ./install.sh
-    cd /usr/local/src/shibboleth-identity-provider-4.*/bin
-    bash install.sh -Didp.host.name=$(hostname -f) -Didp.keysize=3072
-    Buildfile: /usr/local/src/shibboleth-identity-provider-4.x.y/bin/build.xml
-
-    install:
-    Source (Distribution) Directory (press <enter> to accept default): [/usr/local/src/shibboleth-identity-provider-4.x.y] ?
-    Installation Directory: [/opt/shibboleth-idp] ?
-    Backchannel PKCS12 Password: ###PASSWORD-FOR-BACKCHANNEL###
-    Re-enter password:           ###PASSWORD-FOR-BACKCHANNEL###
-    Cookie Encryption Key Password: ###PASSWORD-FOR-COOKIE-ENCRYPTION###
-    Re-enter password:              ###PASSWORD-FOR-COOKIE-ENCRYPTION###
-    SAML EntityID: [https://idp.example.org/idp/shibboleth] ?
-    Attribute Scope: [example.org] ?
-- inštalujeme jetty 9 (pch)
-- konfigurujeme jetty 9
-- konfigurujeme apache 2 ako front end pre jetty
-- 
+- `sudo -u jetty` obviously depends on the owner of `credentials/`.
+- If it were in the standard directory, you could use `/opt/shibboleth-idp/bin/sealer.sh` instead of `/opt/idp4/bin/runclass.sh -Didp.home=/opt/idp4 net.shibboleth.idp.cli.DataSealerCLI`.
+- If it fails (e.g., because the timestamp inside the encrypted value has expired), it will display a misleading error: "Unable to access DataSealer from Spring context". Hence the `--verbose` option.
+- The value `net/shibboleth/idp/conf/sealer.xml` is undocumented; it was discovered via grepping. It won’t work without it.
