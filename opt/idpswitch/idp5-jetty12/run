@@ -1,0 +1,1 @@
+exec env -C /opt/idp5-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base java -Didp.home=/opt/idp5 -jar /opt/jetty-home-12.*/start.jar

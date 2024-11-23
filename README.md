@@ -1,4 +1,28 @@
-# Installation guide for local SAML testing with Shibboleth IdP
+# SAML local development environment guide
+
+This guide explains how to install and configure:
+
+- Java 11 &amp; Java 17
+- Shibboleth IdP 4.2.1 &amp; Shibboleth IdP 5.1.3
+- Jetty 9 &amp; Jetty 10 &amp; Jetty 11 &amp; Jetty 12 &amp; Tomcat 9 &amp; Tomcat 10
+- Apache HTTP Server
+- mod_auth_mellon &amp; mod_shib
+- memcached
+
+This guide is optimized for **developing third-party plugins for Shibboleth IdP**
+(specifically the [Andrvotr](https://github.com/fmfi-svt/andrvotr) plugin).
+That's why it installs so much redundant stuff.
+You might also find it helpful for **developing and testing SAML-enabled web apps** or for **setting up a production instance of Shibboleth IdP**.
+But in that case, you don't need to install everything. Pick one item (or nothing) from each row.
+
+Other Shibboleth IdP installation tutorials:
+
+- [Official IdP 5 installation docs](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199500577/Installation)
+- https://github.com/ConsortiumGARR/idem-tutorials/blob/master/idem-fedops/HOWTO-Shibboleth/Identity%20Provider/Debian-Ubuntu/HOWTO%20Install%20and%20Configure%20a%20Shibboleth%20IdP%20v4.x%20on%20Debian-Ubuntu%20Linux%20with%20Apache2%20%2B%20Jetty9.md
+- (for IdP 3.x) https://israelo.io/blog/Setting-up-shib-sso-like-a-boss/
+- (for IdP 3.x) https://github.com/LEARN-LK/IAM/blob/master/IDPonUbuntu.md
+
+
 
 ## Basics
 
@@ -10,52 +34,74 @@ virt-install -n samltest --ram 4096 --vcpus 2 --cpu host --location ./ubuntu-24.
 virsh console samltest
 ```
 
-Everything is default except: At the beginning, I chose "View SSH instructions" because it's less painful with virsh console. I selected "Ubuntu Server (minimized)", chose a different mirror because the default seems to have some issues right now, turned off "Set up this disk as an LVM group" (though this doesn't matter much), confirmed destructive action, set a username, password, and hostname, enabled "Install OpenSSH server". I did not enable any snaps.
+Everything is default except: At the beginning, I chose "View SSH instructions" because it's less painful than virsh console. I selected "Ubuntu Server (minimized)" (you might prefer the full one), chose a different mirror because the default had some issues at the moment, turned off "Set up this disk as an LVM group" (though this doesn't matter much), confirmed destructive action, set a username, password, and hostname, enabled "Install OpenSSH server". I did not enable any snaps.
+
+Install some utilities (up to your personal preference):
 
 ```shell
 sudo unminimize
-sudo apt install aptitude neovim zip unzip git tig
+sudo apt install aptitude zip unzip git tig mc
 ```
 
-I’ve noted that Uniba reportedly uses Shibboleth IdP 4.2.1, but I’m not sure if this is still true. The latest 4.x version is currently 4.3.3.
-I suspect there's a (small) chance that Uniba will upgrade to v5 in the near future, so it would be good to test v5 as well.
-(V4 recently lost support. https://shibboleth.net/downloads/identity-provider/ says: "NOTE: The latest version of each software branch is maintained below, but at present V5 is current, V4 will be end-of-life on Sept 1, 2024, and all older versions have reached end-of-life and should never be used. Doing so puts an organization at significant risk.")
+If you plan to install **everything** in this guide, clone this repo and run `sudo ./repo-to-system`. Then you can skip all steps below which say "create (or copy from this repo)".
 
 
 
-## Java 17
+## Java
 
-First, install Java. It looks like Amazon Corretto 17 is a good choice, as it is "fully supported" for
+It looks like Amazon Corretto 17 is a good choice, as it is "fully supported" for both
 [IDP4 SystemRequirements](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/1265631833/SystemRequirements) and
 [IDP5 SystemRequirements](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199511079/SystemRequirements).
-Follow the instructions from https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/generic-linux-install.html.
+In my case I installed both Java 11 and Java 17 because I want to test my plugin on both versions.
+
+Official docs:
+[Corretto 11 Installation Instructions](https://docs.aws.amazon.com/corretto/latest/corretto-11-ug/generic-linux-install.html),
+[Corretto 17 Installation Instructions](https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/generic-linux-install.html)
+
+Run:
 
 ```shell
-wget -O - https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg && \
-echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
-sudo apt-get update; sudo apt-get install -y java-17-amazon-corretto-jdk
+wget -O - https://apt.corretto.aws/corretto.key | sudo gpg --dearmor -o /usr/share/keyrings/corretto-keyring.gpg && echo "deb [signed-by=/usr/share/keyrings/corretto-keyring.gpg] https://apt.corretto.aws stable main" | sudo tee /etc/apt/sources.list.d/corretto.list
+sudo apt-get update
+sudo apt-get install -y java-17-amazon-corretto-jdk
+sudo apt-get install -y java-11-amazon-corretto-jdk
 ```
 
+> [!NOTE]
+> Installation order doesn't matter. `/usr/bin/java` will be Java 17.
 
 
-## IdP 4
 
-Install the Shibboleth IdP itself.
+## Shibboleth IdP
+
+Look up the latest IdP version in https://shibboleth.net/downloads/identity-provider/.
+
+In my case I will install IdP 4.2.1 in `/opt/idp4` and IdP 5.1.3 in `/opt/idp5`.
+Only one will run at a time, but there will be a way to easily switch between them.
+For most people it's probably sufficient to pick one version, and use the default installation path `/opt/shibboleth-idp`.
+
+Create a system user named `idp`:
 
 ```shell
-mkdir ~/installation-tmp
-cd ~/installation-tmp
-wget 'https://shibboleth.net/downloads/identity-provider/latest4/shibboleth-identity-provider-4.3.3.tar.gz'
-tar xvf shibboleth-identity-provider-4.3.3.tar.gz
-cd shibboleth-identity-provider-4.3.3/bin/
-sudo ./install.sh
+sudo adduser --system --group --verbose idp
+```
+
+Download and run the IdP 4 installer:
+
+```shell
+cd /tmp/
+wget 'https://shibboleth.net/downloads/identity-provider/archive/4.2.1/shibboleth-identity-provider-4.2.1.tar.gz'
+tar xvf shibboleth-identity-provider-4.2.1.tar.gz
+cd shibboleth-identity-provider-4.2.1/bin/
+sudo mkdir /opt/idp4
+sudo chown idp:idp /opt/idp4
+sudo -u idp ./install.sh
 ```
 
 Respond as follows:
 
 - `Source (Distribution) Directory (...): [...] ?` leave default
 - `Installation Directory: [/opt/shibboleth-idp] ?` enter `/opt/idp4`
-  (I plan to have both v4 and v5 side by side eventually, not upgrade. I hope I won’t regret the non-standard directory.)
 - `Host Name: [192.168.xxx.yyy] ?` enter `idp.unibatest.internal`
 - `Backchannel PKCS12 Password:` generate by running `base64 /dev/urandom | head -c 32` (I couldn’t find any official recommendation on length)
 - `Re-enter password:`
@@ -66,126 +112,414 @@ Respond as follows:
 
 This created `/opt/idp4`. It also mentioned creating `/opt/idp4/metadata/idp-metadata.xml` and `/opt/idp4/war/idp.war`.
 
+Download and run the IdP 5 installer:
+
+```shell
+cd /tmp/
+wget 'https://shibboleth.net/downloads/identity-provider/archive/5.1.3/shibboleth-identity-provider-5.1.3.tar.gz'
+tar xvf shibboleth-identity-provider-5.1.3.tar.gz
+cd shibboleth-identity-provider-5.1.3/bin/
+sudo mkdir /opt/idp5
+sudo chown idp:idp /opt/idp5
+sudo -u idp ./install.sh
+```
+
+Respond as follows:
+
+- `Installation Directory: [/opt/shibboleth-idp] ?` enter `/opt/idp5`
+- `Host Name: [192.168.xxx.yyy] ?` enter `idp.unibatest.internal`
+- `SAML EntityID: [https://idp.unibatest.internal/idp/shibboleth] ?` leave default
+- `Attribute Scope: [unibatest.internal] ?` leave default
+
+This created `/opt/idp5`. It also mentioned creating `/opt/idp5/metadata/idp-metadata.xml` and `/opt/idp5/war/idp.war`.
+
+> [!NOTE]
+> This procedure works well enough for local testing and development. But there might be some room for improvement in production.
+> Some online tutorials run `sudo ./install.sh` as root and then chown a subset of directories to `idp`.
+> That could have some security benefits.
+> But the exact list seems pretty random, and I didn't find any official docs mentioning this.
+> In my case `idp` owns everything, including all configs and jars.
 
 
-## Jetty 12
 
-Next, we need a servlet container (whatever that is). I chose Jetty 12 because it’s supported for both v4 and v5. Uniba uses Tomcat 9 (visible from 404 errors), but that doesn’t matter.
+## Servlet containers
 
-(This turned out to be a big mistake. Getting Jetty 12 to work with IdP 4 was really painful. Next time, I’d probably try Tomcat 9 for IdP 4 and Tomcat 10 for IdP 5.)
+[IdP 4](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/1265631833/SystemRequirements) supports Jetty 9, Jetty 10, Jetty 12, Tomcat 9. \
+[IdP 5](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199511079/SystemRequirements) supports Jetty 11, Jetty 12, Tomcat 10.
 
-I couldn’t find a good guide for Jetty 12. Let’s improvise.
+I installed all of them side by side because I needed the ability to test my plugin with them.
+Only one will run at a time, but there will be a way to easily switch between them.
 
-Go to https://jetty.org/download.html. Find the latest link for Jetty 12 tgz (currently it is 12.0.14).
+For most people it's enough to pick one. In that case, ignore all the `idpswitch` stuff, and hardcode your chosen container in `idp.service`.
+
+All servlet containers will be configured to listen for HTTP on port 8080.
+I'd prefer AJP but Jetty doesn't support it. :(
+
+
+
+### IdP 5 + Jetty 12
+
+Official docs: [IDP5 Jetty12](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3516104706/Jetty12)
+
+Go to https://jetty.org/download.html. Find the latest tgz link for Jetty 12 (currently it is 12.0.15).
 
 ```shell
 cd /tmp
-wget 'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-home/12.0.14/jetty-home-12.0.14.tar.gz'
+wget 'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-home/12.0.15/jetty-home-12.0.15.tar.gz'
 cd /opt
-sudo tar xf /tmp/jetty-home-12*.tar.gz
+sudo tar xf /tmp/jetty-home-12.*.tar.gz
 ```
 
-Then it gets messy.
-[Jetty 12 + IdP 5 Documentation](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3516104706/Jetty12) exists, but there’s no similar article for Jetty 12 + IdP 4.
-IdP 4 System Requirements claim it works with Jetty 12, but there’s no clear guide on how to make them cooperate.
-[java-idp-jetty-base branch 12](https://git.shibboleth.net/view/?p=java-idp-jetty-base.git;a=tree;h=refs/heads/12;hb=refs/heads/12) contains example config for Jetty 12, but it also only works with IdP 5.
-I cobbled something together from these sources and tweaked it until it worked:
+Download Shibboleth Jetty config:
 
 ```shell
-sudo mkdir /opt/jettybase4
-cd /opt/jettybase4
-sudo java -jar /opt/jetty-home-12.0.14/start.jar --add-modules=server,http,http-forwarded,ee8-annotations,ee8-deploy,ee8-jsp,ee8-jstl,ee8-plus
+sudo git clone https://git.shibboleth.net/git/java-idp-jetty-base.git /opt/idp5-jetty12-base --branch 12
+sudo chown -R idp:idp /opt/idp5-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base/{logs,tmp}
 ```
 
-Create the file `/opt/jettybase4/webapps/idp.xml` with the following content:
+Edit `/opt/idp5-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base/modules/idp.mod` as follows: replace `https` and `ssl` with `http-forwarded`.
 
-```xml
-<?xml version="1.0"?>
-<!DOCTYPE Configure PUBLIC "-//Jetty//Configure//EN" "http://www.eclipse.org/jetty/configure.dtd">
-<Configure class="org.eclipse.jetty.ee8.webapp.WebAppContext">
-  <Set name="war">/opt/idp4/war/idp.war</Set>
-  <Set name="contextPath">/idp</Set>
-  <Set name="extractWAR">false</Set>
-  <Set name="copyWebDir">false</Set>
-  <Set name="copyWebInf">true</Set>
-</Configure>
-```
+Edit `/opt/idp5-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base/start.d/idp.ini` as follows: delete `--module=logging-logback` (Logback would need additional setup, and it works fine without it).
 
-(There are some extra things in java-idp-jetty-base.git that I hope are not needed for this test but might be needed in production.
-For example: some better logging, disabled directory indexes of static files because they are said to be vulnerable, something about SAML backchannel, etc.)
+Create (or copy from this repo):
 
-Create a `jetty` user and give it permissions:
+TODO /opt/idpswitch/idp5-jetty12/run
+TODO /opt/idpswitch/idp5-jetty12/idp-metadata.xml
+
+Start the server and test if it works:
 
 ```shell
-sudo adduser --system --group --verbose jetty
-cd /opt/idp4
-sudo chown -R jetty:jetty logs metadata credentials conf war
-```
-
-(FWIW: I’m unsure what should be owned by `root` vs. `jetty`. This list is based on random tutorials, not official sources. Especially making `conf` owned by `jetty` seems suspicious.)
-
-Start the server (wait ~40 seconds) and test if it works:
-
-```shell
-sudo -u jetty env -C /opt/jettybase4/ java -Didp.home=/opt/idp4 -jar /opt/jetty-home-12.0.14/start.jar
+sudo -u idp bash /opt/idpswitch/idp5-jetty12/run
+# simultaneously:
 curl -v http://localhost:8080/idp/status
 ```
 
-Jetty has built-in systemd integration (see `/opt/jetty-home-12.0.14/bin/`), but I don’t like it.
 
-Create the file `/etc/systemd/system/jetty-idp4.service` with the following content:
 
-```ini
-[Unit]
-After=network.target remote-fs.target nss-lookup.target
-[Service]
-ExecStart=java -Didp.home=/opt/idp4 -jar /opt/jetty-home-12.0.14/start.jar
-WorkingDirectory=/opt/jettybase4
-User=jetty
-Group=jetty
-[Install]
-WantedBy=multi-user.target
-```
+### IdP 5 + Jetty 11
 
-Enable and start it:
+Official docs: [IDP5 Jetty11](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199500883/Jetty11)
+
+Go to https://jetty.org/download.html. Find the latest tgz link for Jetty 11 (currently it is 11.0.24).
 
 ```shell
-sudo systemctl enable --now jetty-idp4
+cd /tmp
+wget 'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-home/11.0.24/jetty-home-11.0.24.tar.gz'
+cd /opt
+sudo tar xf /tmp/jetty-home-11.*.tar.gz
 ```
 
-(FWIW: A proper production setup would probably include additional settings like `Restart=`, `PrivateTmp=`, etc.)
+Download Shibboleth Jetty config:
+
+```shell
+sudo git clone https://git.shibboleth.net/git/java-idp-jetty-base.git /opt/idp5-jetty11-base --branch 11
+sudo chown -R idp:idp /opt/idp5-jetty11-base/src/main/resources/jetty-base/{logs,tmp}
+```
+
+Edit `/opt/idp5-jetty11-base/src/main/resources/jetty-base/modules/idp.mod` as follows: replace `https` and `ssl` with `http-forwarded`.
+
+Edit `/opt/idp5-jetty11-base/src/main/resources/jetty-base/start.d/idp.ini` as follows:
+
+- Replace `jetty.http.port=80` with `jetty.http.port=8080`
+- Delete `--module=logging-logback` (Logback would need additional setup, and it works fine without it)
+
+Create (or copy from this repo):
+
+TODO /opt/idpswitch/idp5-jetty11/run
+TODO /opt/idpswitch/idp5-jetty11/idp-metadata.xml
+
+Start the server and test if it works:
+
+```shell
+sudo -u idp bash /opt/idpswitch/idp5-jetty11/run
+# simultaneously:
+curl -v http://localhost:8080/idp/status
+```
 
 
 
-## Apache
+### IdP 5 + Tomcat 10
 
-Next, I want Apache. Theoretically, it’s not necessary since Jetty can directly listen on port 443, but later I will want additional virtual hosts and mod_auth_mellon.
+Official docs: [IDP5 Tomcat 10.1](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3269689345/Tomcat+10.1)
+
+Go to https://tomcat.apache.org/download-10.cgi. Find the latest "core tar.gz" link (currently it is 10.1.33).
+
+```shell
+cd /tmp
+wget 'https://dlcdn.apache.org/tomcat/tomcat-10/v10.1.33/bin/apache-tomcat-10.1.33.tar.gz'
+cd /opt
+sudo tar xf /tmp/apache-tomcat-10.*.tar.gz
+sudo chmod -R ugo+rX apache-tomcat-10.*
+```
+
+(Why does the tar.gz contain 0600 file permissions?!)
+
+```shell
+sudo git clone https://git.shibboleth.net/git/java-idp-tomcat-base.git /opt/idp5-tomcat10-base --branch 10.1
+sudo chown -R idp:idp /opt/idp5-tomcat10-base/tomcat-base/{logs,temp,webapps,work}
+```
+
+Edit `/opt/idp5-tomcat10-base/tomcat-base/bin/setenv.sh` as follows: replace `/opt/shibboleth-idp` with `/opt/idp5`.
+
+Edit `/opt/idp5-tomcat10-base/tomcat-base/conf/catalina.properties` as follows: replace `tomcat.http.port=80` with `tomcat.http.port=8080`.
+
+Edit `/opt/idp5-tomcat10-base/tomcat-base/conf/server.xml` as follows:
+
+- Delete `<Connector address="${tomcat.https.host}"` ... `</Connector>`
+- Add `jvmRoute="foo5555"` attribute to `<Engine ...>` (optional, just for testing JSESSIONID handling in Andrvotr)
+- Add `<Valve className="org.apache.catalina.valves.RemoteIpValve" />` between `</Host>` and `</Engine>`
+
+Create (or copy from this repo):
+
+TODO /opt/idpswitch/idp5-tomcat10/run
+TODO /opt/idpswitch/idp5-tomcat10/idp-metadata.xml
+
+Start the server and test if it works:
+
+```shell
+sudo -u idp bash /opt/idpswitch/idp5-tomcat10/run
+# simultaneously:
+curl -v http://localhost:8080/idp/status
+```
+
+
+
+### IdP 4 + Jetty 12
+
+Official docs: no
+
+This was actually the first combination I tried to setup. Which was quite unlucky because it was definitely the most painful and least documented. So much time lost... :C
+
+Download Jetty 12 if you hadn't already (see above).
+
+Download Shibboleth Jetty config:
+
+```shell
+sudo git clone https://git.shibboleth.net/git/java-idp-jetty-base.git /opt/idp4-jetty12-base --branch 12
+sudo chown -R idp:idp /opt/idp4-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base/{logs,tmp}
+```
+
+Edit `/opt/idp4-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base/modules/idp.mod` as follows:
+
+- Replace `https` and `ssl` with `http-forwarded`
+- Replace all `ee9` with `ee8`
+
+Edit `/opt/idp4-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base/start.d/idp.ini` as follows: delete `--module=logging-logback` (Logback would need additional setup, and it works fine without it).
+
+Edit `/opt/idp4-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/module/jetty/jetty-base/webapps/idp.xml` as follows: replace `ee9` with `ee8`.
+
+Create (or copy from this repo):
+
+TODO /opt/idpswitch/idp4-jetty12/run
+TODO /opt/idpswitch/idp4-jetty12/idp-metadata.xml
+
+Note that this guide generally runs IdP 5 on Java 17 and IdP 4 on Java 11, but `idp4-jetty12` is an exception because Jetty 12 requires Java 17.
+
+Start the server and test if it works:
+
+```shell
+sudo -u idp bash /opt/idpswitch/idp4-jetty12/run
+# simultaneously:
+curl -v http://localhost:8080/idp/status
+```
+
+
+
+### IdP 4 + Jetty 10
+
+Official docs: [IDP4 Jetty10](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/2936012848/Jetty10)
+
+Go to https://jetty.org/download.html. Find the latest tgz link for Jetty 10 (currently it is 10.0.24).
+
+```shell
+cd /tmp
+wget 'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-home/10.0.24/jetty-home-10.0.24.tar.gz'
+cd /opt
+sudo tar xf /tmp/jetty-home-10.*.tar.gz
+```
+
+Download Shibboleth Jetty config:
+
+```shell
+sudo git clone https://git.shibboleth.net/git/java-idp-jetty-base.git /opt/idp4-jetty10-base --branch 10
+sudo chown -R idp:idp /opt/idp4-jetty10-base/src/main/resources/jetty-base/{logs,tmp}
+```
+
+Edit `/opt/idp4-jetty10-base/src/main/resources/jetty-base/modules/idp.mod` as follows: replace `https` and `ssl` with `http-forwarded`.
+
+Edit `/opt/idp4-jetty10-base/src/main/resources/jetty-base/start.d/idp.ini` as follows:
+
+- Replace `jetty.http.port=80` with `jetty.http.port=8080`
+- Delete `--module=logging-logback` (Logback would need additional setup, and it works fine without it)
+
+Create (or copy from this repo):
+
+TODO /opt/idpswitch/idp4-jetty10/run
+TODO /opt/idpswitch/idp4-jetty10/idp-metadata.xml
+
+Start the server and test if it works:
+
+```shell
+sudo -u idp bash /opt/idpswitch/idp4-jetty10/run
+# simultaneously:
+curl -v http://localhost:8080/idp/status
+```
+
+
+
+### IdP 4 + Jetty 9
+
+Official docs: [IDP4 Jetty94](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/1274544254/Jetty94)
+
+Go to https://jetty.org/download.html. Find the latest tgz link for Jetty 9 (currently it is 9.4.56.v20240826).
+
+```shell
+cd /tmp
+wget 'https://repo1.maven.org/maven2/org/eclipse/jetty/jetty-distribution/9.4.56.v20240826/jetty-distribution-9.4.56.v20240826.tar.gz'
+cd /opt
+sudo tar xf /tmp/jetty-distribution-9.*.tar.gz
+```
+
+Download Shibboleth Jetty config:
+
+```shell
+sudo git clone https://git.shibboleth.net/git/java-idp-jetty-base.git /opt/idp4-jetty9-base --branch 9.4
+sudo chown -R idp:idp /opt/idp4-jetty9-base/src/main/resources/jetty-base/{logs,tmp}
+```
+
+Edit `/opt/idp4-jetty9-base/src/main/resources/jetty-base/modules/idp.mod` as follows: replace `https` and `ssl` with `http-forwarded`.
+
+Edit `/opt/idp4-jetty9-base/src/main/resources/jetty-base/start.d/idp.ini` as follows: add `jetty.http.host=127.0.0.1`.
+
+Edit `/opt/idp4-jetty9-base/src/main/resources/jetty-base/webapps/idp.xml` as follows: replace `../war/idp.war` with `/opt/idp4/war/idp.war`.
+
+Delete `/opt/idp4-jetty9-base/src/main/resources/jetty-base/start.d/idp-backchannel.ini` and `/opt/idp4-jetty9-base/src/main/resources/jetty-base/start.d/idp-logging.ini`.
+
+Create (or copy from this repo):
+
+TODO /opt/idpswitch/idp4-jetty9/run
+TODO /opt/idpswitch/idp4-jetty9/idp-metadata.xml
+
+Start the server and test if it works:
+
+```shell
+sudo -u idp bash /opt/idpswitch/idp4-jetty9/run
+# simultaneously:
+curl -v http://localhost:8080/idp/status
+```
+
+
+
+### IdP 4 + Tomcat 9
+
+Official docs: no
+
+Uniba production uses this combination as of this writing (visible from 404 errors).
+
+Go to https://tomcat.apache.org/download-90.cgi. Find the latest "core tar.gz" link (currently it is 9.0.97).
+
+```shell
+cd /tmp
+wget 'https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.97/bin/apache-tomcat-9.0.97.tar.gz'
+cd /opt
+sudo tar xf /tmp/apache-tomcat-9.*.tar.gz
+sudo chmod -R ugo+rX apache-tomcat-9.*
+```
+
+(Why does the tar.gz contain 0600 file permissions?!)
+
+```shell
+sudo git clone https://git.shibboleth.net/git/java-idp-tomcat-base.git /opt/idp4-tomcat9-base --branch 9.0
+sudo chown -R idp:idp /opt/idp4-tomcat9-base/src/main/resources/tomcat-base/{logs,temp,webapps,work}
+```
+
+Edit `/opt/idp4-tomcat9-base/src/main/resources/tomcat-base/bin/setenv.sh` as follows:
+
+- Replace `/opt/shibboleth-idp` with `/opt/idp4`
+- Add `JAVA_HOME=/usr/lib/jvm/java-11-amazon-corretto`
+
+Edit `/opt/idp4-tomcat9-base/src/main/resources/tomcat-base/conf/catalina.properties` as follows: replace `tomcat.http.port=80` with `tomcat.http.port=8080`.
+
+Edit `/opt/idp4-tomcat9-base/src/main/resources/tomcat-base/conf/server.xml` as follows:
+
+- Delete `<Connector address="${tomcat.https.host}"` ... `</Connector>`
+- Add `<Valve className="org.apache.catalina.valves.RemoteIpValve" />` between `</Host>` and `</Engine>`
+- Add `jvmRoute="foo4444"` attribute to `<Engine ...>` (optional, just for testing JSESSIONID handling in Andrvotr)
+
+Create (or copy from this repo):
+
+TODO /opt/idpswitch/idp4-tomcat9/run
+TODO /opt/idpswitch/idp4-tomcat9/idp-metadata.xml
+
+Start the server and test if it works:
+
+```shell
+sudo -u idp bash /opt/idpswitch/idp4-tomcat9/run
+# simultaneously:
+curl -v http://localhost:8080/idp/status
+```
+
+
+
+### Systemd service
+
+Create (or copy from this repo):
+
+TODO /etc/systemd/system/idp.service
+
+> [!NOTE]
+> This systemd service is good enough for local testing and development. But there might be some room for improvement in production.
+> You should probably add `Restart=on-failure`. You can also add various security hardening options, for example check
+> [Debian's tomcat10.service](https://sources.debian.org/src/tomcat10/10.1.31-1/debian/tomcat10.service/) for inspiration.
+
+Choose a servlet container, enable and start the service, and test it:
+
+```shell
+sudo ln -sfT /opt/idpswitch/idp5-tomcat10 /opt/idpswitch/active
+sudo systemctl daemon-reload
+sudo systemctl enable --now idp
+curl -v http://localhost:8080/idp/status
+```
+
+Note that logs are spread across multiple locations:
+
+* `/opt/idp{4,5}/logs` (for IdP specific logs)
+* The `logs` directory somewhere in the servlet container base directory (for some servlet container logs)
+* `sudo journalctl -u idp` (for stdout/stderr, because our service file doesn't redirect them)
+
+Because the IdP takes ~40 seconds to start, it can be useful to restart it like this:
+
+```shell
+sudo systemctl restart idp && curl --retry 5 --retry-connrefused -v http://localhost:8080/idp/status -o /dev/null
+```
+
+To switch to another servlet containers, run: (note that `apache2` and `shibd` will be installed below)
+
+```shell
+sudo ln -sfT /opt/idpswitch/something /opt/idpswitch/active
+sudo systemctl restart apache2 idp shibd
+```
+
+
+
+## Apache HTTP Server
+
+I chose it because I want multiple virtual hosts and some SAML SP modules. You might not need it in production because Tomcat and Jetty can listen directly on port 443.
 
 ```shell
 sudo apt install apache2
 ```
 
-Create a file `/etc/apache2/sites-available/idp.conf` with the following content:
+Create (or copy from this repo):
 
-```apacheconf
-<VirtualHost *:443>
-        ServerName idp.unibatest.internal
-        SSLEngine on
-        SSLCertificateFile      /etc/ssl/certs/ssl-cert-snakeoil.pem
-        SSLCertificateKeyFile   /etc/ssl/private/ssl-cert-snakeoil.key
-        DocumentRoot /nonexistent
-        ErrorLog ${APACHE_LOG_DIR}/idp-error.log
-        CustomLog ${APACHE_LOG_DIR}/idp-access.log combined
-        ProxyPreserveHost On
-        ProxyAddHeaders On
-        ProxyPass / http://localhost:8080/
-        ProxyPassReverse / http://localhost:8080/
-        RequestHeader set X-Forwarded-Proto "https"
-</VirtualHost>
-```
+TODO /etc/apache2/sites-available/idp.conf
 
-It’s a pity that Jetty doesn’t support AJP. :(
-I think this setup is a bit vulnerable to request smuggling (e.g., Jetty reads the remote IP also from the "Forwarded:" header, which Apache doesn’t know about), but for simplicity, I’ll ignore it.
+> [!NOTE]
+> This Apache config is good enough for local testing and development. But there might be some room for improvement in production.
+> I think this configuration is slightly vulnerable to forwarded header spoofing.
+> For example, Jetty also reads the remote IP from the `Forwarded:` header, which Apache doesn't know about.
+> The end user might be able to use this convince the IdP that it's on another remote IP, or similar.
+> I don't know if this really matters in practice.
 
 Enable it:
 
@@ -200,113 +534,103 @@ curl -v --insecure --resolve '*:443:127.0.0.1' https://idp.unibatest.internal/id
 
 ## Access from Chrome
 
-For most people, it’s enough to add the appropriate lines to `/etc/hosts` on the external physical machine where the browser runs. I’m overcomplicating it.
+For most people, it’s enough to add the appropriate lines to `/etc/hosts` on the outer physical machine where your browser runs.
 
-Tunnel through one or a series of `ssh -L` from localhost:12399 to the virtual machine samltest:443.
+I’m overcomplicating it because my virtual machine runs on a headless server far away.
 
-Run Chrome on your machine with the following options:
+Tunnel from localhost:12399 to samltest:443 like this:
 
 ```shell
-chrome --user-data-dir=/tmp/blabla --guest --host-resolver-rules="MAP *.unibatest.internal:443 127.0.0.1:12399" --ignore-certificate-errors
+ssh -t -L 12399:localhost:12399 user@foo ssh -t -L 12399:localhost:12399 user@bar ssh -t -L 12399:localhost:443 user@baz
 ```
 
-(--user-data-dir is required only to allow launching a new process in a new profile if Chrome is already running. Otherwise, it just tells the running process to open a new window but ignores the options. --guest probably isn’t necessary.)
+Run Chrome on your desktop with the following options:
 
-Open `https://idp.unibatest.internal/` and you should see something.
+```shell
+chrome --user-data-dir=/tmp/chromeprofile --guest --host-resolver-rules="MAP *.unibatest.internal:443 127.0.0.1:12399" --ignore-certificate-errors --disable-search-engine-choice-screen
+```
+
+(--user-data-dir is required only to allow launching a new process in a new profile if Chrome is already running. Otherwise, it just tells the running process to open a new window but ignores the options. --guest probably isn’t necessary, but it makes it easier to reset all cookies.)
+
+Open `https://idp.unibatest.internal/` and you should see a 403 or 404 error from Jetty or Tomcat.
+
+Open `https://idp.unibatest.internal/idp/` and you should see "No services are available at this location.".
+
+It'll be convenient to append `https://spmellon.unibatest.internal/` to the Chrome command later on.
 
 
 
 ## IdP configuration
 
-(I refuse to install an LDAP server as well.) Edit `/opt/idp4/conf/authn/password-authn-config.xml` as follows:
+We'll use a htpasswd-based user database because I refuse to install an LDAP server as well.
+
+Edit both `/opt/idp4/conf/authn/password-authn-config.xml` and `/opt/idp5/conf/authn/password-authn-config.xml` as follows:
 
 - Comment out the line `<ref bean="shibboleth.LDAPValidator" />`
-- Uncomment the line `<bean parent="shibboleth.HTPasswdValidator" p:resource="%{idp.home}/credentials/demo.htpasswd" />`
+- Uncomment the line `<bean parent="shibboleth.HTPasswdValidator" p:resource="%{idp.home}/credentials/demo.htpasswd" />` and replace `/credentials/` with `/../`
 
 Create some users and assign them passwords:
 
 ```shell
-sudo -u jetty touch /opt/idp4/credentials/demo.htpasswd
-sudo -u jetty htpasswd /opt/idp4/credentials/demo.htpasswd aaa
-sudo -u jetty htpasswd /opt/idp4/credentials/demo.htpasswd bbb
-sudo -u jetty htpasswd /opt/idp4/credentials/demo.htpasswd ccc
+sudo touch /opt/demo.htpasswd
+sudo htpasswd /opt/demo.htpasswd aaa
+sudo htpasswd /opt/demo.htpasswd bbb
+sudo htpasswd /opt/demo.htpasswd ccc
 ```
 
-Edit the file `/opt/idp4/metadata/idp-metadata.xml` and remove the `validUntil="..."` attribute at the top.
-I’m not sure if it’s better to remove it or change it, but Shibboleth SP (see below) doesn’t like the default value ("Metadata instance was invalid at time of acquisition."), and the official idp.uniba.sk metadata doesn’t have it either.
+Edit `/opt/idp4/metadata/idp-metadata.xml` as follows: remove the `validUntil="..."` attribute at the top.
+
+I’m not sure if it’s better to remove it or change it, but Shibboleth SP (see below) complains about the default value ("Metadata instance was invalid at time of acquisition."), and our production IdP metadata doesn’t have it either.
+
+Edit `/opt/idp5/metadata/idp-metadata.xml` as follows: change `<md:EntityDescriptorentityID=` to `<md:EntityDescriptor entityID=`. (This is a known bug OSJ-409 fixed in IdP 5.2.0.)
+
+The `validUntil` attribute is no longer present, so there is no need to remove it.
+
+Edit both `/opt/idp4/conf/access-control.xml` and `/opt/idp5/conf/access-control.xml` as follows:
+
+- Uncomment `<entry key="AccessByAdminUser">` ... `</entry>`
+- Replace `'jdoe'` with one of the users you created, e.g. `'bbb'`
 
 Restart it:
 
 ```shell
-sudo systemctl restart jetty-idp4
+sudo systemctl restart idp
 ```
 
-Now you should be able to visit `https://idp.unibatest.internal/idp/profile/admin/hello` and get a login form that behaves differently depending on whether you enter the correct/incorrect username/password.
-(Although when I log in correctly, I still get access denied, but that’s fine. It’s doing something.)
-(According to `/opt/idp4/logs/idp-process.log`, this is because "No policy named 'AccessByAdminUser' found, returning default denial policy.")
+Now you should be able to visit `https://idp.unibatest.internal/idp/profile/admin/hello` and get a working login form which:
 
-Many other things could be configured, but for now, this seems sufficient.
+- Says "The username you entered cannot be identified." when you enter an incorrect username.
+- Says "The password you entered was incorrect." when you enter an incorrect password.
+- Says "You do not have access to the requested resource." when you log in as a "normal user".
+- Shows a list of SAML attributes when you log in as the "admin user" if using Java 11.
+- Says "org.springframework.binding.expression.EvaluationException: An ELException occurred getting the value for expression 'ScriptedAction' on context ..." when you log in as the "admin user" if using Java 17 (IdP 5 and/or Jetty 12).
+
+Let's fix that...
+
+```shell
+sudo -u idp /opt/idp5/bin/plugin.sh -I net.shibboleth.idp.plugin.nashorn
+sudo systemctl restart idp
+```
+
+(This guide doesn't need Nashorn for anything except this hello page, so you can skip it if you want.)
 
 
 
 ## SP using mod_auth_mellon
 
-Create a file `/etc/apache2/sites-available/spmellon.conf` with the following content:
+Create (or copy from this repo):
 
-```apacheconf
-<VirtualHost *:443>
-        ServerName spmellon.unibatest.internal
-        SSLEngine on
-        SSLCertificateFile      /etc/ssl/certs/ssl-cert-snakeoil.pem
-        SSLCertificateKeyFile   /etc/ssl/private/ssl-cert-snakeoil.key
-        DocumentRoot /var/www/spmellon
-        ErrorLog ${APACHE_LOG_DIR}/spmellon-error.log
-        CustomLog ${APACHE_LOG_DIR}/spmellon-access.log combined
-        WSGIScriptAlias /pyinfo /var/www/spmellon/pyinfo.py process-group=spmellonpy
-        WSGIScriptAlias /secret/pyinfo /var/www/spmellon/pyinfo.py process-group=spmellonpy
-        WSGIDaemonProcess spmellonpy processes=1 threads=1
-        WSGIApplicationGroup %{GLOBAL}
-        <Location />
-                MellonEnable "info"
-                MellonSPMetadataFile /etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.xml
-                MellonSPPrivateKeyFile /etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.key
-                MellonSPCertFile /etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.cert
-                MellonIdPMetadataFile /opt/idp4/metadata/idp-metadata.xml
-        </Location>
-        <Location /secret>
-                Require valid-user
-                AuthType "Mellon"
-                MellonEnable "auth"
-        </Location>
-</VirtualHost>
-```
+TODO /etc/apache2/sites-available/spmellon.conf
+
+TODO /var/www/pyinfo.py
+
+TODO /var/www/spmellon/index.html
+
+TODO /var/www/spmellon/secret/index.html
 
 (Since both SP and IdP run on the same virtual machine, for convenience, I directly use the path to idp-metadata.xml. In production, this XML file would, of course, be copied to the other machine.)
 
-Create a file `/var/www/spmellon/index.html` (and its directory) with the following content:
-
-```html
-<a href="/pyinfo/">pyinfo</a><br>
-<a href="/secret/">secret</a><br>
-<a href="/secret/pyinfo/">secret pyinfo</a><br>
-```
-
-Create a file `/var/www/spmellon/pyinfo.py` with the following content:
-
-```python
-import pprint
-def application(environ, start_response):
-    start_response('200 OK', [('Content-Type', 'text/plain;charset=UTF-8')])
-    return [pprint.pformat(environ).encode('utf-8')]
-```
-
-Create a file `/var/www/spmellon/secret/index.html` (and its directory) with the following content:
-
-```html
-<h1>secret</h1>
-```
-
-Edit `/opt/idp4/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
+Edit both `/opt/idp4/conf/metadata-providers.xml` and `/opt/idp5/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
 
 ```xml
 <MetadataProvider id="LocalMetadata_spmellon" xsi:type="FilesystemMetadataProvider" metadataFile="/etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.xml"/>
@@ -320,13 +644,46 @@ sudo mkdir /etc/apache2/spmellon
 cd /etc/apache2/spmellon
 sudo mellon_create_metadata https://spmellon.unibatest.internal/mellon/metadata https://spmellon.unibatest.internal/mellon
 sudo a2ensite spmellon
-sudo systemctl restart apache2
-sudo systemctl restart jetty-idp4
+sudo systemctl restart apache2 idp
 ```
 
-Now you should be able to visit `https://spmellon.unibatest.internal/` and see various things.
+Now you should be able to visit `https://spmellon.unibatest.internal/` and interact with it.
 
 We’ve learned that the Shibboleth IdP by default only provides an ugly transient NameID (something long starting with `AAdzZWNyZXQx...`) and a single attribute `schacHomeOrganization` AKA `urn:oid:1.3.6.1.4.1.25178.1.2.9`, whose value is `unibatest.internal`.
+
+
+
+### Another one
+
+`spmellon2` is just a clone of `spmellon`. I needed multiple SPs for some tests.
+
+Create (or copy from this repo):
+
+TODO /etc/apache2/sites-available/spmellon2.conf
+
+TODO /var/www/pyinfo.py
+
+TODO /var/www/spmellon2/index.html
+
+TODO /var/www/spmellon2/secret/index.html
+
+(Since both SP and IdP run on the same virtual machine, for convenience, I directly use the path to idp-metadata.xml. In production, this XML file would, of course, be copied to the other machine.)
+
+Edit both `/opt/idp4/conf/metadata-providers.xml` and `/opt/idp5/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
+
+```xml
+<MetadataProvider id="LocalMetadata_spmellon2" xsi:type="FilesystemMetadataProvider" metadataFile="/etc/apache2/spmellon2/https_spmellon2.unibatest.internal_mellon_metadata.xml"/>
+```
+
+Run:
+
+```shell
+sudo mkdir /etc/apache2/spmellon2
+cd /etc/apache2/spmellon2
+sudo mellon_create_metadata https://spmellon2.unibatest.internal/mellon/metadata https://spmellon2.unibatest.internal/mellon
+sudo a2ensite spmellon2
+sudo systemctl restart apache2 idp
+```
 
 
 
@@ -343,51 +700,33 @@ Edit `/etc/shibboleth/shibboleth2.xml` as follows:
 
 - Change `<ApplicationDefaults entityID="https://sp.example.org/shibboleth"` to `<ApplicationDefaults entityID="https://spshib.unibatest.internal/shibboleth"`
 - Change `<SSO entityID="https://idp.example.org/idp/shibboleth"` to `<SSO entityID="https://idp.unibatest.internal/idp/shibboleth"`
-- Change `discoveryProtocol="SAMLDS" discoveryURL="https://ds.example.org/DS/WAYF">` to `>`
-- Uncomment and change `<MetadataProvider type="XML" validate="true" path="partner-metadata.xml"/>` to `<MetadataProvider type="XML" validate="true" path="/opt/idp4/metadata/idp-metadata.xml"/>`
+- Delete `discoveryProtocol="SAMLDS" discoveryURL="https://ds.example.org/DS/WAYF"`
+- Uncomment and change `<MetadataProvider type="XML" validate="true" path="partner-metadata.xml"/>` to `<MetadataProvider type="XML" validate="true" path="/opt/idpswitch/active/idp-metadata.xml"/>`
 
-Create a file `/etc/apache2/sites-available/spshib.conf` with the following content:
+Create (or copy from this repo):
 
-```apacheconf
-<VirtualHost *:443>
-        ServerName spshib.unibatest.internal
-        SSLEngine on
-        SSLCertificateFile      /etc/ssl/certs/ssl-cert-snakeoil.pem
-        SSLCertificateKeyFile   /etc/ssl/private/ssl-cert-snakeoil.key
-        DocumentRoot /var/www/spshib
-        ErrorLog ${APACHE_LOG_DIR}/spshib-error.log
-        CustomLog ${APACHE_LOG_DIR}/spshib-access.log combined
-        WSGIScriptAlias /pyinfo /var/www/spshib/pyinfo.py process-group=spshibpy
-        WSGIScriptAlias /secret/pyinfo /var/www/spshib/pyinfo.py process-group=spshibpy
-        WSGIDaemonProcess spshibpy processes=1 threads=1
-        WSGIApplicationGroup %{GLOBAL}
-        <Location />
-                AuthType Shibboleth
-                Require shibboleth
-                ShibRequestSetting requireSession false
-        </Location>
-        <Location /secret>
-                AuthType Shibboleth
-                Require shib-session
-                ShibRequestSetting requireSession 1
-        </Location>
-</VirtualHost>
-```
+TODO /etc/apache2/sites-available/spshib.conf
+
+TODO /var/www/pyinfo.py
+
+TODO /var/www/spshib/index.html
+
+TODO /var/www/spshib/secret/index.html
 
 Edit `/etc/apache2/conf-available/shib.conf` as follows: change `ShibCompatValidUser Off` to `ShibCompatValidUser On`.
+
 (This is to prevent breaking spmellon, which otherwise throws a 401 error. Normally, this wouldn’t be necessary, but here both are in the same Apache instance.)
 
 Run:
 
 ```shell
-sudo cp -a /var/www/spmellon /var/www/spshib
 sudo a2ensite spshib
 sudo systemctl restart shibd
 sudo systemctl restart apache2
 sudo curl --insecure --resolve '*:443:127.0.0.1' https://spshib.unibatest.internal/Shibboleth.sso/Metadata -o /opt/meta-spshib.xml
 ```
 
-Edit `/opt/idp4/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
+Edit both `/opt/idp4/conf/metadata-providers.xml` and `/opt/idp5/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
 
 ```xml
 <MetadataProvider id="LocalMetadata_spshib" xsi:type="FilesystemMetadataProvider" metadataFile="/opt/meta-spshib.xml"/>
@@ -396,141 +735,33 @@ Edit `/opt/idp4/conf/metadata-providers.xml` and add the following at the bottom
 Run:
 
 ```shell
-sudo systemctl restart jetty-idp4
+sudo systemctl restart idp
 ```
 
-Now you should be able to visit `https://spshib.unibatest.internal/` and see various things.
+Now you should be able to visit `https://spshib.unibatest.internal/` and interact with it.
 
 It appears that Shibboleth SP completely ignores NameID (it doesn’t store it in any variable), at least when it’s transient.
 It really wants to receive (some) attribute, and if it doesn’t, it leaves `REMOTE_USER` empty.
-This is likely why `/etc/shibboleth/shibboleth2.xml` defaults to `REMOTE_USER="eppn subject-id pairwise-id persistent-id"`.
+This is likely because `/etc/shibboleth/shibboleth2.xml` defaults to `REMOTE_USER="eppn subject-id pairwise-id persistent-id"`.
 
 Some information about these can be found at https://docs.oasis-open.org/security/saml-subject-id-attr/v1.0/saml-subject-id-attr-v1.0.html.
 
 
 
-## IdP 5
-
-For most users, it's probably sufficient to run one IdP at a time (or test the upgrade process from version 4 to 5).
-However, I want to develop a plugin that works on both, hence this complexity.
-The goal is to have only one running at a time but to switch between them relatively easily.
-
-```shell
-cd ~/installation-tmp
-wget 'https://shibboleth.net/downloads/identity-provider/latest5/shibboleth-identity-provider-5.1.3.tar.gz'
-tar xvf shibboleth-identity-provider-5.1.3.tar.gz
-cd shibboleth-identity-provider-5.1.3/bin/
-sudo ./install.sh
-```
-
-Respond as follows:
-
-- `Installation Directory: [/opt/shibboleth-idp] ?` enter `/opt/idp5`
-- `Host Name: [192.168.xxx.yyy] ?` enter `idp.unibatest.internal`
-- `SAML EntityID: [https://idp.unibatest.internal/idp/shibboleth] ?` leave default
-- `Attribute Scope: [unibatest.internal] ?` leave default
-
-This created `/opt/idp5`. It also mentioned creating `/opt/idp5/metadata/idp-metadata.xml` and `/opt/idp5/war/idp.war`.
-
-Edit `/opt/idp5/conf/authn/password-authn-config.xml` as described above.
-Create `/opt/idp5/credentials/demo.htpasswd` as described above (or simply copy it).
-Edit `/opt/idp5/conf/metadata-providers.xml` as described above.
-
-Edit `/opt/idp5/metadata/idp-metadata.xml` as follows: change `<md:EntityDescriptorentityID=` to `<md:EntityDescriptor entityID=`. (This is a known bug OSJ-409 fixed in IdP 5.2.0.)
-The `validUntil` attribute is no longer present, so there is no need to remove it.
-
-Once again I used Jetty 12 as the servlet container.
-In theory, it should now work using the configuration from `java-idp-jetty-base.git` branch `12`. But I don’t like it because it enables HTTPS and other features by default.
-Instead, I created my own jetty-base, undoing my changes (especially from ee8 back to ee9).
-
-```shell
-sudo mkdir /opt/jettybase5
-cd /opt/jettybase5
-sudo java -jar /opt/jetty-home-12.0.14/start.jar --add-modules=server,http,http-forwarded,ee9-annotations,ee9-deploy,ee9-jsp,ee9-jstl,ee9-plus
-```
-
-Create `/opt/jettybase5/webapps/idp.xml` with the following content:
-
-```xml
-<?xml version="1.0"?>
-<!DOCTYPE Configure PUBLIC "-//Jetty//Configure//EN" "http://www.eclipse.org/jetty/configure.dtd">
-<Configure class="org.eclipse.jetty.ee9.webapp.WebAppContext">
-  <Set name="war">/opt/idp5/war/idp.war</Set>
-  <Set name="contextPath">/idp</Set>
-  <Set name="extractWAR">false</Set>
-  <Set name="copyWebDir">false</Set>
-  <Set name="copyWebInf">true</Set>
-</Configure>
-```
-
-(There are some extra things in java-idp-jetty-base.git that I hope are not needed for this test but might be needed in production.
-For example: some better logging, disabled directory indexes of static files because they are said to be vulnerable, something about SAML backchannel, etc.)
-
-Create a `jetty` user (if not done earlier) and give it permissions:
-
-```shell
-sudo adduser --system --group --verbose jetty
-cd /opt/idp5
-sudo chown -R jetty:jetty logs metadata credentials conf war
-```
-
-(FWIW: I’m unsure what should be owned by `root` vs. `jetty`. This list is based on random tutorials, not official sources. Especially making `conf` owned by `jetty` seems suspicious.)
-
-Disable the previous jetty (if applicable).
-
-```shell
-sudo systemctl disable --now jetty-idp4
-```
-
-Start the server (wait ~40 seconds) and test if it works:
-
-```shell
-sudo -u jetty env -C /opt/jettybase5/ java -Didp.home=/opt/idp5 -jar /opt/jetty-home-12.0.14/start.jar
-curl -v http://localhost:8080/idp/status
-```
-
-Jetty has built-in systemd integration (see `/opt/jetty-home-12.0.14/bin/`), but I don’t like it.
-
-Create the file `/etc/systemd/system/jetty-idp5.service` with the following content:
-
-```ini
-[Unit]
-After=network.target remote-fs.target nss-lookup.target
-[Service]
-ExecStart=java -Didp.home=/opt/idp5 -jar /opt/jetty-home-12.0.14/start.jar
-WorkingDirectory=/opt/jettybase5
-User=jetty
-Group=jetty
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start it:
-
-```shell
-sudo systemctl enable --now jetty-idp5
-```
-
-(FWIW: A proper production setup would probably include additional settings like `Restart=`, `PrivateTmp=`, etc.)
-
-```shell
-sudo ln -sf idp5 /opt/idpcurrent
-```
-
-Update `/etc/apache2/sites-available/spmellon.conf` and `/etc/shibboleth/shibboleth2.xml` as follows: Change `/opt/idp4/metadata/idp-metadata.xml` to `/opt/idpcurrent/metadata/idp-metadata.xml`.
-
-This allows switching between IdP 4 and 5 by disabling one, enabling the other, updating the `idpcurrent` symlink, and restarting apache2 and shibd.
-
-
-
 ## memcached
+
+Official docs:
+[IDP4 StorageConfiguration](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/1265631707/StorageConfiguration),
+[IDP5 StorageConfiguration](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199509576/StorageConfiguration)
+
+You might not need memcached. I installed it to match Uniba production, and because Andrvotr needs (any) server-side session storage.
 
 ```shell
 sudo apt install memcached libmemcached-tools
 ```
 
-Edit `/opt/idp5/conf/global.xml` and add the following configuration at the bottom:
-(Source: [Shibboleth StorageConfiguration](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199509576/StorageConfiguration), modified to use localhost)
+Edit both `/opt/idp4/conf/global.xml` and `/opt/idp5/conf/global.xml` and add the following configuration at the bottom: \
+(This is copied from the StorageConfiguration docs, only modified to use `localhost`.)
 
 ```xml
     <bean id="shibboleth.MemcachedStorageService"
@@ -554,7 +785,7 @@ Edit `/opt/idp5/conf/global.xml` and add the following configuration at the bott
     </bean>
 ```
 
-Edit `/opt/idp5/conf/idp.properties` as follows:
+Edit both `/opt/idp4/conf/idp.properties` and `/opt/idp5/conf/idp.properties` as follows:
 
 - Change `#idp.session.StorageService = shibboleth.ClientSessionStorageService` to `idp.session.StorageService = shibboleth.MemcachedStorageService`
 - Change `#idp.replayCache.StorageService = shibboleth.StorageService` to `idp.replayCache.StorageService = shibboleth.MemcachedStorageService`
@@ -563,29 +794,106 @@ Edit `/opt/idp5/conf/idp.properties` as follows:
 
 
 
-## Unsorted
+## Andrvotr development
+
+This section is specific to working on the [Andrvotr](https://github.com/fmfi-svt/andrvotr) plugin.
+
+Go to https://maven.apache.org/download.cgi. Find the latest binary tar.gz link (currently it is 3.9.9).
 
 ```shell
 cd
-wget https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz
+wget 'https://dlcdn.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz'
 tar xvf apache-maven-3.9.9-bin.tar.gz
 echo 'PATH=$HOME/apache-maven-3.9.9/bin:$PATH' >> .bashrc
+exec bash
 ```
 
-Create ~/.m2/settings.xml with content from https://shibboleth.atlassian.net/wiki/spaces/DEV/pages/2891317253/MavenRepositories
+Follow the procedure in the Andrvotr README to create a GPG key.
+
+Run this so that `plugin.sh` is able read the plugin file.
 
 ```shell
 chmod 755 ~
-
-sudo chown -R jetty:jetty /opt/idp4 /opt/idp5
 ```
 
-Added logout link to /var/www/spmellon/secret/index.html.
-
-Edit /opt/idp5/conf/access-control.xml, uncomment the AccessByAdminUser section and change `jdoe` to `bbb`.
+Build and install the plugin for IdP 5:
 
 ```shell
-env -C /opt/idp5/bin/ sudo -u jetty ./plugin.sh -I net.shibboleth.idp.plugin.nashorn
+git switch idp5
+git clean -fdX
+sudo ln -sfT /opt/idpswitch/idp5-jetty12 /opt/idpswitch/active
+time GNUPGHOME=../gpgdir MAVEN_GPG_PUBLIC_KEY="$(cat ../gpgpublic.asc)" mvn verify && time sudo -u idp /opt/idp5/bin/plugin.sh -i $PWD/andrvotr-dist/target/*-SNAPSHOT.tar.gz --noCheck && time sudo systemctl restart idp && time curl --retry 5 --retry-connrefused -v http://localhost:8080/idp/status -o /dev/null
+```
+
+Build and install the plugin for IdP 4:
+
+```shell
+git switch idp4
+git clean -fdX
+sudo ln -sfT /opt/idpswitch/idp4-jetty12 /opt/idpswitch/active
+time PATH=/usr/lib/jvm/java-11-amazon-corretto/bin:$PATH GNUPGHOME=../gpgdir MAVEN_GPG_PUBLIC_KEY="$(cat ../gpgpublic.asc)" mvn verify && time sudo -u idp /opt/idp4/bin/plugin.sh -i $PWD/andrvotr-dist/target/idp-plugin-andrvotr-*-SNAPSHOT.tar.gz --noCheck && time sudo systemctl restart idp && time curl --retry 5 --retry-connrefused -v http://localhost:8080/idp/status -o /dev/null
+```
+
+The long command builds the plugin, installs it, restarts the IdP, and waits for it to start.
+
+Always remember to build from the correct branch, and to run `git clean -fdX` when you switch.
+
+Edit both `/opt/idp4/conf/attribute-resolver.xml` and `/opt/idp5/conf/attribute-resolver.xml` as described in the Andrvotr README.
+
+Edit both `/opt/idp4/conf/attribute-filter.xml` and `/opt/idp5/conf/attribute-filter.xml` as described in the Andrvotr README.
+
+Edit both `/opt/idp4/conf/idp.properties` and `/opt/idp5/conf/idp.properties` and append this:
+
+```ini
+andrvotr.httpclient.connectionDisregardTLSCertificate=true
+
+andrvotr.apiKeys=[ \
+    https://spmellon.unibatest.internal/mellon/metadata##secretmellonkey \
+    https://spshib.unibatest.internal/shibboleth##secretshibkey \
+]
+
+andrvotr.allowedConnections=[ \
+    https://spmellon.unibatest.internal/mellon/metadata>>https://spshib.unibatest.internal/shibboleth \
+    https://spshib.unibatest.internal/shibboleth>>https://spmellon2.unibatest.internal/mellon/metadata \
+]
+```
+
+Edit `/etc/shibboleth/attribute-map.xml` and add this line just before `</Attributes>`:
+
+```xml
+    <Attribute name="tag:fmfi-svt.github.io,2024:andrvotr-authority-token" id="ANDRVOTR_AUTHORITY_TOKEN" />
+```
+
+TODO: Explain how to demo.
+
+When needed, you can enable maximum logging in `idp.properties` with this:
+
+```ini
+idp.loglevel.idp=TRACE
+idp.loglevel.ldap=TRACE
+idp.loglevel.messages=TRACE
+idp.loglevel.encryption=TRACE
+idp.loglevel.opensaml=TRACE
+idp.loglevel.shared=TRACE
+idp.loglevel.props=TRACE
+idp.loglevel.httpclient=TRACE
+idp.loglevel.spring=TRACE
+idp.loglevel.container=TRACE
+idp.loglevel.xmlsec=TRACE
+idp.loglevel.root=TRACE
+```
+
+
+
+
+
+
+
+
+## Unsorted
+
+```shell
+chmod 755 ~
 ```
 
 Because of andrvotr/fabricate I had to also add idp.unibatest.internal to /etc/hosts (`127.0.1.1 samltest idp.unibatest.internal`).
@@ -602,49 +910,69 @@ Run:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+TODO: maximum logging in idp.properties
 
 
-# Miscellaneous commands for SAML debugging
 
-When you see a POST request with form data containing `SAMLResponse=PD94...` (the path may vary), it is simply base64 encoded.
+## Miscellaneous SAML debugging commands
 
-```shell
-printf 'PD94...' | base64 -d | sed 's/></>\n</g'
-```
+### Decoding SAML requests in redirects
 
-This can be used for example to read the response from the WSO2 IdP to the AIS SP.
-Unfortunately, Shibboleth IdP by default produces encrypted assertions (`<saml2:EncryptedAssertion><xenc:EncryptedData>`).
-If you have the private key for a given SP, you can decrypt it like this:
-
-```shell
-sudo apt install xmlsec1
-printf 'PD94bWwg...' | base64 -d | sudo xmlsec1 --decrypt --privkey-pem /etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.key - | sed 's/></>\n</g'
-```
-
-If you encounter the error `func=xmlSecTransformNodeRead:file=transforms.c:line=1324:obj=unknown:subj=xmlSecTransformIdListFindByHref:error=1:xmlsec library function failed:href=http://www.w3.org/2009/xmlenc11#rsa-oaep`, it means you need xmlsec >= 1.3.0. It is not yet available as a package in Ubuntu but is available e.g. in conda-forge (good luck).
-
-New xmlsec >= 1.3.0 requires `--lax-key-search /dev/stdin` instead of `-`.
-
-```shell
-cat file | base64 -d | sudo .../bin/xmlsec1 --decrypt --privkey-pem /etc/shibboleth/sp-encrypt-key.pem --lax-key-search /dev/stdin | sed 's/></>\n</g'
-```
-
-When you have a request like `GET https://.../idp/profile/SAML2/Redirect/SSO?SAMLRequest=nZ...` (i.e., HTTP-Redirect binding), it is raw zlib. Decode it like this:
+If you see a request like `GET https://.../idp/profile/SAML2/Redirect/SSO?SAMLRequest=nZ...` (i.e., HTTP-Redirect binding), it is compressed with raw deflate. Decode it like this:
 
 ```shell
 printf 'nZ...' | base64 -d | python3 -c "import zlib,sys; sys.stdout.buffer.write(zlib.decompress(sys.stdin.buffer.read(), -8))" | sed 's/></>\n</g'
 ```
 
-Obscure detail:
-Shibboleth IdP sometimes generates symmetrically AEAD-encrypted values of the form `AAdzZWNy...`.
-These may appear as opaque NameID values or as entries in `localStorage` if client-side session storage is enabled (it’s enabled by default, but not at uniba).
-If you have the private keys of the IdP and want to inspect the contents, you can decrypt them like this:
+### Decoding SAML responses
+
+SAML responses are usually sent as a POST request with form data containing `SAMLResponse=PD94...`. (The request path may vary for each SP.) It is simply base64 encoded.
 
 ```shell
-sudo -u jetty /opt/idp4/bin/runclass.sh -Didp.home=/opt/idp4 net.shibboleth.idp.cli.DataSealerCLI --verbose net/shibboleth/idp/conf/sealer.xml dec "$str"
+printf 'PD94...' | base64 -d | sed 's/></>\n</g'
 ```
 
-- `sudo -u jetty` obviously depends on the owner of `credentials/`.
-- If it were in the standard directory, you could use `/opt/shibboleth-idp/bin/sealer.sh` instead of `/opt/idp4/bin/runclass.sh -Didp.home=/opt/idp4 net.shibboleth.idp.cli.DataSealerCLI`.
-- If it fails (e.g., because the timestamp inside the encrypted value has expired), it will display a misleading error: "Unable to access DataSealer from Spring context". Hence the `--verbose` option.
-- The value `net/shibboleth/idp/conf/sealer.xml` is undocumented; it was discovered via grepping. It won’t work without it.
+This can be used for example to read the response from the WSO2 IdP to the AIS SP, which is not encrypted.
+
+### Decrypting SAML responses
+
+Shibboleth IdP produces encrypted SAML assertions in SAML responses (the XML contains `<saml2:EncryptedAssertion><xenc:EncryptedData>`).
+If you have the private key for a given SP, you can decrypt it.
+
+There are multiple XML encryption methods. Each SP can choose its preferred method.
+E.g. mod_auth_mellon prefers the method named `"http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p"`.
+mod_shib prefers the method named `"http://www.w3.org/2009/xmlenc11#rsa-oaep"`.
+
+Encrypted XML can be decrypted with a program named xmlsec1.
+But the Ubuntu package for xmlsec1 is currently on version 1.2.39, which is too old to understand `"http://www.w3.org/2009/xmlenc11#rsa-oaep"`.
+If you use an old version, you'll get this error:
+
+```
+func=xmlSecTransformNodeRead:file=transforms.c:line=1324:obj=unknown:subj=xmlSecTransformIdListFindByHref:error=1:xmlsec library function failed:href=http://www.w3.org/2009/xmlenc11#rsa-oaep
+```
+
+You must either build xmlsec1 from source (good luck), or download a binary somewhere else (good luck). For example conda-forge has a package "libxmlsec1" containing the program.
+
+```shell
+printf 'PD94bWwg...' | base64 -d | sudo /.../path/to/xmlsec1 --decrypt --privkey-pem /etc/apache2/spmellon/https_spmellon.unibatest.internal_mellon_metadata.key --lax-key-search /dev/stdin | sed 's/></>\n</g'
+```
+
+### Decrypting DataSealer blobs
+
+Shibboleth IdP sometimes generates opaque symmetrically AEAD-encrypted values. They look like `AAdzZWNy...`.
+
+For example, they appear as opaque NameID values, as entries in `localStorage` if client-side session storage is enabled, and as Andrvotr Authority Tokens.
+
+If you have the private keys of the IdP, you can decrypt them like this:
+
+```shell
+sudo -u idp /opt/idp5/bin/runclass.sh -Didp.home=/opt/idp5 net.shibboleth.idp.cli.DataSealerCLI --verbose net/shibboleth/idp/conf/sealer.xml dec "$str"
+```
+
+If decrypting fails (e.g., because the timestamp inside the encrypted value has expired), it will display a misleading error: "Unable to access DataSealer from Spring context". You need the `--verbose` option to show the real error.
+
+`bin/sealer.sh` only works if it's installed in the default path `/opt/shibboleth-idp`. That's why we must use `runclass.sh ... DataSealerCLI` as a workaround.
+
+TODO: `JAVA_OPTS=-Didp.home=/opt/idp5` should work. But only on IdP 5. :(
+
+The value `net/shibboleth/idp/conf/sealer.xml` is undocumented; it was discovered via grepping. It won’t work without it.

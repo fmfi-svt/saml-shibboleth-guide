@@ -1,0 +1,1 @@
+CATALINA_BASE=/opt/idp4-tomcat9-base/src/main/resources/tomcat-base exec /opt/apache-tomcat-9.*/bin/catalina.sh run

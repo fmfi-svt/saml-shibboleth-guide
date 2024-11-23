@@ -1,0 +1,1 @@
+exec env -C /opt/idp4-jetty9-base/src/main/resources/jetty-base /usr/lib/jvm/java-11-amazon-corretto/bin/java -Didp.home=/opt/idp4 -jar /opt/jetty-distribution-9.*/start.jar

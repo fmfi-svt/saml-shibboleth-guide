@@ -1,0 +1,18 @@
+#!/bin/bash
+
+cd "$(dirname "$0")"
+
+rm -rf etc opt var
+
+for f in \
+  etc/systemd/system/idp.service \
+  etc/apache2/sites-available \
+  var/www \
+  opt/idpswitch \
+  ;
+do
+  mkdir -p "${f%/*}"
+  cp -av "/$f" "$f"
+done
+
+rm -rf etc/apache2/sites-available/*default* var/www/html opt/idpswitch/active

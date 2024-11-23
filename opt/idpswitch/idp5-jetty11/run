@@ -1,0 +1,1 @@
+exec env -C /opt/idp5-jetty11-base/src/main/resources/jetty-base java -Didp.home=/opt/idp5 -jar /opt/jetty-home-11.*/start.jar

@@ -1,0 +1,10 @@
+[Unit]
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+ExecStart=/bin/bash /opt/idpswitch/active/run
+User=idp
+Group=idp
+
+[Install]
+WantedBy=multi-user.target
