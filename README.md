@@ -183,8 +183,11 @@ Edit `/opt/idp5-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/mo
 
 Create (or copy from this repo):
 
-TODO /opt/idpswitch/idp5-jetty12/run
-TODO /opt/idpswitch/idp5-jetty12/idp-metadata.xml
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/opt/idpswitch/idp5-jetty12/run#L1
+
+```shell
+sudo ln -s /opt/idp5/metadata/idp-metadata.xml /opt/idpswitch/idp5-jetty12/idp-metadata.xml
+```
 
 Start the server and test if it works:
 
@@ -225,8 +228,11 @@ Edit `/opt/idp5-jetty11-base/src/main/resources/jetty-base/start.d/idp.ini` as f
 
 Create (or copy from this repo):
 
-TODO /opt/idpswitch/idp5-jetty11/run
-TODO /opt/idpswitch/idp5-jetty11/idp-metadata.xml
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/opt/idpswitch/idp5-jetty11/run#L1
+
+```shell
+sudo ln -s /opt/idp5/metadata/idp-metadata.xml /opt/idpswitch/idp5-jetty11/idp-metadata.xml
+```
 
 Start the server and test if it works:
 
@@ -271,8 +277,11 @@ Edit `/opt/idp5-tomcat10-base/tomcat-base/conf/server.xml` as follows:
 
 Create (or copy from this repo):
 
-TODO /opt/idpswitch/idp5-tomcat10/run
-TODO /opt/idpswitch/idp5-tomcat10/idp-metadata.xml
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/opt/idpswitch/idp5-tomcat10/run#L1
+
+```shell
+sudo ln -s /opt/idp5/metadata/idp-metadata.xml /opt/idpswitch/idp5-tomcat10/idp-metadata.xml
+```
 
 Start the server and test if it works:
 
@@ -310,8 +319,11 @@ Edit `/opt/idp4-jetty12-base/jetty-impl/src/main/resources/net/shibboleth/idp/mo
 
 Create (or copy from this repo):
 
-TODO /opt/idpswitch/idp4-jetty12/run
-TODO /opt/idpswitch/idp4-jetty12/idp-metadata.xml
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/opt/idpswitch/idp4-jetty12/run#L1
+
+```shell
+sudo ln -s /opt/idp4/metadata/idp-metadata.xml /opt/idpswitch/idp4-jetty12/idp-metadata.xml
+```
 
 Note that this guide generally runs IdP 5 on Java 17 and IdP 4 on Java 11, but `idp4-jetty12` is an exception because Jetty 12 requires Java 17.
 
@@ -354,8 +366,11 @@ Edit `/opt/idp4-jetty10-base/src/main/resources/jetty-base/start.d/idp.ini` as f
 
 Create (or copy from this repo):
 
-TODO /opt/idpswitch/idp4-jetty10/run
-TODO /opt/idpswitch/idp4-jetty10/idp-metadata.xml
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/opt/idpswitch/idp4-jetty10/run#L1
+
+```shell
+sudo ln -s /opt/idp4/metadata/idp-metadata.xml /opt/idpswitch/idp4-jetty10/idp-metadata.xml
+```
 
 Start the server and test if it works:
 
@@ -397,8 +412,11 @@ Delete `/opt/idp4-jetty9-base/src/main/resources/jetty-base/start.d/idp-backchan
 
 Create (or copy from this repo):
 
-TODO /opt/idpswitch/idp4-jetty9/run
-TODO /opt/idpswitch/idp4-jetty9/idp-metadata.xml
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/opt/idpswitch/idp4-jetty9/run#L1
+
+```shell
+sudo ln -s /opt/idp4/metadata/idp-metadata.xml /opt/idpswitch/idp4-jetty9/idp-metadata.xml
+```
 
 Start the server and test if it works:
 
@@ -448,8 +466,11 @@ Edit `/opt/idp4-tomcat9-base/src/main/resources/tomcat-base/conf/server.xml` as 
 
 Create (or copy from this repo):
 
-TODO /opt/idpswitch/idp4-tomcat9/run
-TODO /opt/idpswitch/idp4-tomcat9/idp-metadata.xml
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/opt/idpswitch/idp4-tomcat9/run#L1
+
+```shell
+sudo ln -s /opt/idp4/metadata/idp-metadata.xml /opt/idpswitch/idp4-tomcat9/idp-metadata.xml
+```
 
 Start the server and test if it works:
 
@@ -465,7 +486,7 @@ curl -v http://localhost:8080/idp/status
 
 Create (or copy from this repo):
 
-TODO /etc/systemd/system/idp.service
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/etc/systemd/system/idp.service#L1-L10
 
 > [!NOTE]
 > This systemd service is good enough for local testing and development. But there might be some room for improvement in production.
@@ -512,7 +533,7 @@ sudo apt install apache2
 
 Create (or copy from this repo):
 
-TODO /etc/apache2/sites-available/idp.conf
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/etc/apache2/sites-available/idp.conf#L1-L14
 
 > [!NOTE]
 > This Apache config is good enough for local testing and development. But there might be some room for improvement in production.
@@ -620,9 +641,9 @@ sudo systemctl restart idp
 
 Create (or copy from this repo):
 
-TODO /etc/apache2/sites-available/spmellon.conf
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/etc/apache2/sites-available/spmellon.conf#L1-L27
 
-TODO /var/www/sp/sp.py
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/var/www/sp/sp.py#L1-L61
 
 > [!NOTE]
 > Since both SP and IdP run on the same virtual machine, for convenience, I directly use the path to idp-metadata.xml in the SP config. In production, this XML file would, of course, be copied to the other machine.
@@ -659,7 +680,7 @@ We’ve learned that the Shibboleth IdP by default only provides an ugly transie
 
 Create (or copy from this repo):
 
-TODO /etc/apache2/sites-available/spmellon2.conf
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/etc/apache2/sites-available/spmellon2.conf#L1-L27
 
 Edit both `/opt/idp4/conf/metadata-providers.xml` and `/opt/idp5/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
 
@@ -697,9 +718,9 @@ Edit `/etc/shibboleth/shibboleth2.xml` as follows:
 
 Create (or copy from this repo):
 
-TODO /etc/apache2/sites-available/spshib.conf
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/etc/apache2/sites-available/spshib.conf#L1-L22
 
-TODO /var/www/sp/sp.py
+https://github.com/fmfi-svt/saml-shibboleth-guide/blob/d0ef071335da12aa5f60cc0c7679781295551b2b/var/www/sp/sp.py#L1-L61
 
 Edit `/etc/apache2/conf-available/shib.conf` as follows: change `ShibCompatValidUser Off` to `ShibCompatValidUser On`.
 
