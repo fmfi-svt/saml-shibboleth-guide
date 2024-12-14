@@ -7,7 +7,7 @@ rm -rf etc opt var
 for f in \
   etc/systemd/system/idp.service \
   etc/apache2/sites-available \
-  var/www \
+  var/www/sp \
   opt/idpswitch \
   ;
 do
@@ -15,4 +15,4 @@ do
   cp -av "/$f" "$f"
 done
 
-rm -rf etc/apache2/sites-available/*default* var/www/html opt/idpswitch/active
+rm -rf etc/apache2/sites-available/*default* opt/idpswitch/active

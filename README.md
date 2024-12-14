@@ -1,4 +1,4 @@
-# SAML local development environment guide
+# SAML & Shibboleth dev setup guide
 
 This guide explains how to install and configure:
 
@@ -622,13 +622,13 @@ Create (or copy from this repo):
 
 TODO /etc/apache2/sites-available/spmellon.conf
 
-TODO /var/www/pyinfo.py
+TODO /var/www/sp/sp.py
 
-TODO /var/www/spmellon/index.html
+> [!NOTE]
+> Since both SP and IdP run on the same virtual machine, for convenience, I directly use the path to idp-metadata.xml in the SP config. In production, this XML file would, of course, be copied to the other machine.
 
-TODO /var/www/spmellon/secret/index.html
-
-(Since both SP and IdP run on the same virtual machine, for convenience, I directly use the path to idp-metadata.xml. In production, this XML file would, of course, be copied to the other machine.)
+> [!NOTE]
+> This config uses mod_wsgi and a small Python website, but that's just an example. Python just prints the request variables and does not handle any auth. PHP with `phpinfo();`, or just static `secret/index.html`, would work just as well.
 
 Edit both `/opt/idp4/conf/metadata-providers.xml` and `/opt/idp5/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
 
@@ -660,14 +660,6 @@ We’ve learned that the Shibboleth IdP by default only provides an ugly transie
 Create (or copy from this repo):
 
 TODO /etc/apache2/sites-available/spmellon2.conf
-
-TODO /var/www/pyinfo.py
-
-TODO /var/www/spmellon2/index.html
-
-TODO /var/www/spmellon2/secret/index.html
-
-(Since both SP and IdP run on the same virtual machine, for convenience, I directly use the path to idp-metadata.xml. In production, this XML file would, of course, be copied to the other machine.)
 
 Edit both `/opt/idp4/conf/metadata-providers.xml` and `/opt/idp5/conf/metadata-providers.xml` and add the following at the bottom (just above the last line `</MetadataProvider>`):
 
@@ -707,11 +699,7 @@ Create (or copy from this repo):
 
 TODO /etc/apache2/sites-available/spshib.conf
 
-TODO /var/www/pyinfo.py
-
-TODO /var/www/spshib/index.html
-
-TODO /var/www/spshib/secret/index.html
+TODO /var/www/sp/sp.py
 
 Edit `/etc/apache2/conf-available/shib.conf` as follows: change `ShibCompatValidUser Off` to `ShibCompatValidUser On`.
 
@@ -794,6 +782,37 @@ Edit both `/opt/idp4/conf/idp.properties` and `/opt/idp5/conf/idp.properties` as
 
 
 
+## Logout
+
+Official docs:
+[IDP5 LogoutConfiguration](https://shibboleth.atlassian.net/wiki/spaces/IDP5/pages/3199510118/LogoutConfiguration),
+[IDP4 LogoutConfiguration](https://shibboleth.atlassian.net/wiki/spaces/IDP4/pages/1265631719/LogoutConfiguration).
+(Completely useless. Even worse than usual.)
+
+Edit `/opt/idp4/metadata/idp-metadata.xml` as follows: uncomment the 4 lines which start with `<SingleLogoutService`.
+
+Edit `/opt/idp5/metadata/idp-metadata.xml` as follows:
+
+- Delete the line `<md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:SOAP" Location="https://idp.unibatest.internal/idp/profile/SAML2/SOAP/ArtifactResolution" />`, if present. (I think it is a bug in IdP 5.1.3, because `SAML2/SOAP/ArtifactResolution` should be `<ArtifactResolutionService>`, not `<SingleLogoutService>`.)
+- Add these lines between the last `</md:KeyDescriptor>` and the first `<md:SingleSignOnService...>` (mod_shib cares about element order):
+  ```xml
+          <md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="https://idp.unibatest.internal/idp/profile/SAML2/POST/SLO"/>
+          <md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.unibatest.internal/idp/profile/SAML2/Redirect/SLO"/>
+          <md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST-SimpleSign" Location="https://idp.unibatest.internal/idp/profile/SAML2/POST-SimpleSign/SLO"/>
+          <md:SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:SOAP" Location="https://idp.unibatest.internal:8443/idp/profile/SAML2/SOAP/SLO"/>
+  ```
+
+I have no idea how anyone is supposed to discover this. The official docs did not even mention editing IdP metadata. At least for IdP 4 the installer wrote that comment. In IdP 5 there is not even that.
+
+Restart the services again. At this point you should be able to log out. If you are logged in to multiple SPs, the IdP will show a "Logout Locally" and "Logout Globally" button.
+
+It has a few unexpected quirks:
+
+- The IdP does not redirect the user back to the initiating SP. It shows a logout message and stays there. A SAML logout response is sent to the SP's logout service handler inside a hidden iframe.
+- If you press "Logout Locally" and later try to logout from some other service which did not log out, it will fail with an error because the IdP session does not exist anymore.
+
+
+
 ## Andrvotr development
 
 This section is specific to working on the [Andrvotr](https://github.com/fmfi-svt/andrvotr) plugin.
@@ -808,7 +827,7 @@ echo 'PATH=$HOME/apache-maven-3.9.9/bin:$PATH' >> .bashrc
 exec bash
 ```
 
-Follow the procedure in the Andrvotr README to create a GPG key.
+Follow [the procedure in the Andrvotr README](https://github.com/fmfi-svt/andrvotr/blob/idp5/README.md#building-from-source) to create a GPG key.
 
 Run this so that `plugin.sh` is able read the plugin file.
 
@@ -836,11 +855,11 @@ time PATH=/usr/lib/jvm/java-11-amazon-corretto/bin:$PATH GNUPGHOME=../gpgdir MAV
 
 The long command builds the plugin, installs it, restarts the IdP, and waits for it to start.
 
-Always remember to build from the correct branch, and to run `git clean -fdX` when you switch.
+Always remember to build from the correct branch, and to run `git clean -fdX` when you switch, because Maven gets confused by stale build outputs.
 
-Edit both `/opt/idp4/conf/attribute-resolver.xml` and `/opt/idp5/conf/attribute-resolver.xml` as described in the Andrvotr README.
+Edit both `/opt/idp4/conf/attribute-resolver.xml` and `/opt/idp5/conf/attribute-resolver.xml` as described in the [Andrvotr README](https://github.com/fmfi-svt/andrvotr/blob/idp5/README.md#building-from-source).
 
-Edit both `/opt/idp4/conf/attribute-filter.xml` and `/opt/idp5/conf/attribute-filter.xml` as described in the Andrvotr README.
+Edit both `/opt/idp4/conf/attribute-filter.xml` and `/opt/idp5/conf/attribute-filter.xml` as described in the [Andrvotr README](https://github.com/fmfi-svt/andrvotr/blob/idp5/README.md#building-from-source).
 
 Edit both `/opt/idp4/conf/idp.properties` and `/opt/idp5/conf/idp.properties` and append this:
 
@@ -864,7 +883,45 @@ Edit `/etc/shibboleth/attribute-map.xml` and add this line just before `</Attrib
     <Attribute name="tag:fmfi-svt.github.io,2024:andrvotr-authority-token" id="ANDRVOTR_AUTHORITY_TOKEN" />
 ```
 
-TODO: Explain how to demo.
+At this point, you should see the new SAML attribute in the server environment when you log in to `spmellon` or `spshib`.
+
+Edit `/etc/hosts` and add this line:
+
+```
+127.0.0.1 idp.unibatest.internal spmellon.unibatest.internal spmellon2.unibatest.internal spshib.unibatest.internal
+```
+
+(Editing `/etc/hosts` wasn't needed until now, for normal SAML flows. But Andrvotr requires it.)
+
+Run:
+
+```shell
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Sign in to spmellon.unibatest.internal in a browser. Find the value of `'MELLON_tag:fmfi-svt.github.io,2024:andrvotr-authority-token'` in the WSGI environment. Run:
+
+```shell
+read aat
+# paste the value
+PYTHONWARNINGS=ignore VERIFY_TLS_CERTS=false ./demo/demo.py 'https://spshib.unibatest.internal/secret/' "https://spmellon.unibatest.internal/mellon/metadata" "secretmellonkey" "$aat"
+```
+
+It should print the "spshib SECRET, logged IN" page.
+
+Now try with `'https://spmellon2.unibatest.internal/secret/'` instead of `'https://spshib.unibatest.internal/secret/'`. It should print an error because spmellon to spmellon2 is not in andrvotr.allowedConnections. The message should contain `@AllowedConnectionCheckFailure`.
+
+Sign in to spshib.unibatest.internal in a browser. Find the value of `'ANDRVOTR_AUTHORITY_TOKEN'` in the WSGI environment. Run:
+
+```shell
+read aat
+# paste the value
+PYTHONWARNINGS=ignore VERIFY_TLS_CERTS=false ./demo/demo.py 'https://spmellon2.unibatest.internal/secret/' "https://spshib.unibatest.internal/shibboleth" "secretshibkey" "$aat"
+```
+
+It should print the "spmellon2 SECRET, logged IN" page.
+
+### Verbose IdP logging
 
 When needed, you can enable maximum logging in `idp.properties` with this:
 
@@ -882,35 +939,6 @@ idp.loglevel.container=TRACE
 idp.loglevel.xmlsec=TRACE
 idp.loglevel.root=TRACE
 ```
-
-
-
-
-
-
-
-
-## Unsorted
-
-```shell
-chmod 755 ~
-```
-
-Because of andrvotr/fabricate I had to also add idp.unibatest.internal to /etc/hosts (`127.0.1.1 samltest idp.unibatest.internal`).
-
-Edit /opt/idp5/conf/idp.properties and append at the bottom:
-
-```ini
-andrvotr.httpclient.connectionDisregardTLSCertificate=true
-```
-
-Run:
-
-```shell
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-TODO: maximum logging in idp.properties
 
 
 
@@ -966,13 +994,15 @@ For example, they appear as opaque NameID values, as entries in `localStorage` i
 If you have the private keys of the IdP, you can decrypt them like this:
 
 ```shell
-sudo -u idp /opt/idp5/bin/runclass.sh -Didp.home=/opt/idp5 net.shibboleth.idp.cli.DataSealerCLI --verbose net/shibboleth/idp/conf/sealer.xml dec "$str"
+sudo -u idp JAVA_OPTS=-Didp.home=/opt/idp5 /opt/idp5/bin/sealer.sh --verbose net/shibboleth/idp/conf/sealer.xml dec "$str"
 ```
 
 If decrypting fails (e.g., because the timestamp inside the encrypted value has expired), it will display a misleading error: "Unable to access DataSealer from Spring context". You need the `--verbose` option to show the real error.
 
-`bin/sealer.sh` only works if it's installed in the default path `/opt/shibboleth-idp`. That's why we must use `runclass.sh ... DataSealerCLI` as a workaround.
+IdP 4 `sealer.sh` does not know `JAVA_OPTS`, so if it's installed in a custom path other than `/opt/shibboleth-idp`, you must run:
 
-TODO: `JAVA_OPTS=-Didp.home=/opt/idp5` should work. But only on IdP 5. :(
+```shell
+sudo -u idp /opt/idp4/bin/runclass.sh -Didp.home=/opt/idp4 net.shibboleth.idp.cli.DataSealerCLI --verbose net/shibboleth/idp/conf/sealer.xml dec "$str"
+```
 
 The value `net/shibboleth/idp/conf/sealer.xml` is undocumented; it was discovered via grepping. It won’t work without it.
